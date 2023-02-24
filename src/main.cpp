@@ -105,26 +105,26 @@ void setup() {
 void loop() {
   Serial.println("Start");
   vTaskDelay(2000 / portTICK_PERIOD_MS);
-  for (posVal = 0; posVal <= 90; posVal += 1) { // goes from 0 degrees to 180 degrees
-    // in steps of 1 degree
-    myservo.write(posVal); // tell servo to go to position in variable 'pos'  
-  delay(15); // waits 15ms for the servo to reach the position
-  }
-  for (posVal = 90; posVal >= 0; posVal -= 1) { // goes from 180 degrees to 0 degrees
-    myservo.write(posVal); // tell servo to go to position in variable 'pos'
-    delay(15); // waits 15ms for the servo to reach the position
-  }
+  // for (posVal = 0; posVal <= 90; posVal += 1) { // goes from 0 degrees to 180 degrees
+  //   // in steps of 1 degree
+  //   myservo.write(posVal); // tell servo to go to position in variable 'pos'  
+  // delay(15); // waits 15ms for the servo to reach the position
+  // }
+  // for (posVal = 90; posVal >= 0; posVal -= 1) { // goes from 180 degrees to 0 degrees
+  //   myservo.write(posVal); // tell servo to go to position in variable 'pos'
+  //   delay(15); // waits 15ms for the servo to reach the position
+  // }
 
-  int potenVal = analogRead(A0);// Convert the voltage of rotary potentiometer into digital
-  rotationSpeed = potenVal - 2048;
-  if (potenVal > 2048)
-  rotationDir = true;
-  else
-  rotationDir = false;
-  // Calculate the motor speed
-  rotationSpeed = abs(potenVal - 2048);
-  //Control the steering and speed of the motor
-  driveMotor(rotationDir, constrain(rotationSpeed,0,2048));
+  // int potenVal = analogRead(A0);// Convert the voltage of rotary potentiometer into digital
+  // rotationSpeed = potenVal - 2048;
+  // if (potenVal > 2048)
+  // rotationDir = true;
+  // else
+  // rotationDir = false;
+  // // Calculate the motor speed
+  // rotationSpeed = abs(potenVal - 2048);
+  // //Control the steering and speed of the motor
+  // driveMotor(rotationDir, constrain(rotationSpeed,0,2048));
 }
 
 
