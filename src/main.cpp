@@ -33,67 +33,54 @@ TaskHandle_t pir_sensor_Handle;
 TaskHandle_t led_strigger_Handle;
 TaskHandle_t dc_motor_Handle;
 
-// void led_strigger_task(void *pvParmeter){
+void led_strigger_task(void *pvParmeter){
     
-//     while(1){
-//         Serial.println("Entering LED TRIGGER");
-//         if(xSemaphoreTake(sensorMutex,portMAX_DELAY)==pdTRUE){
-//             if(sensorMode == 1){
-//                 digitalWrite(LED_PIN,HIGH);
-//             }
-//             else if(sensorMode ==0){
-//                 digitalWrite(LED_PIN,LOW);
-//             }
-//             xSemaphoreGive(sensorMutex);
-//         }
-//         vTaskDelay(100/portTICK_PERIOD_MS);
-//         vTaskResume(dc_motor_Handle);
-//         vTaskSuspend(NULL);
-//     }
+    while(1){
+        Serial.println("Entering LED TRIGGER<><><><><><><><><><><><><><><><><><><><><><><><><><><><><>");
+        if(xSemaphoreTake(sensorMutex,portMAX_DELAY)==pdTRUE){
+            if(sensorMode == 1){
+                digitalWrite(LED_PIN,HIGH);
+            }
+            else if(sensorMode ==0){
+                digitalWrite(LED_PIN,LOW);
+            }
+            Serial.println(sensorMode);
+            xSemaphoreGive(sensorMutex);
+        }
+        vTaskDelay(1000/portTICK_PERIOD_MS);
+        vTaskResume(pir_sensor_Handle);
+        // vTaskSuspend(NULL);
+    }
 
-// }
+}
 
 /*Helper Functions*/
 
-// void drive_motor(boolean dir, int spd){
-//     if(dir){ //Control motor rotation direction
-//         digitalWrite(IN_1_PIN,HIGH);
-//         digitalWrite(IN_2_PIN, LOW);
-//     }
-//     else{
-//         digitalWrite(IN_1_PIN,LOW);
-//         digitalWrite(IN_2_PIN, HIGH);      
-//     }
-//     analogWrite(EN_1_PIN,spd); // Control motor rotation speed
-
-// }
-
 void run_motor(int number){
-    Serial.println("motor is running ********");
-    Serial.println(number);
+    // Serial.println("motor is running ********");
+    // Serial.println(number);
     ledcWrite(CHANNEL, number);
 }
 
 void pir_sensor_task(void *pvParameter) {
-    
+    Serial.println("Entering PIR SENSOR TASK");
     while (1)
     {
-        Serial.println("Entering PIR SENSOR TASK**********************************");
         if (digitalRead(PIR_SENSOR_PIN) == HIGH) {
             Serial.println("Sensor Detected>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
-//         //     if (xSemaphoreTake(sensorMutex, portMAX_DELAY) == pdTRUE)
-//         //     {
-//         //         sensorMode = 1;
-//         //         xSemaphoreGive(sensorMutex);
-//         //     }
-//         // } else {
-//         //     if(xSemaphoreTake(sensorMutex,portMAX_DELAY)==pdTRUE){
-//         //         sensorMode = 0;
-//         //         xSemaphoreGive(sensorMutex);
-//         //     }
+            if (xSemaphoreTake(sensorMutex, portMAX_DELAY) == pdTRUE)
+            {
+                sensorMode = 1;
+                xSemaphoreGive(sensorMutex);
+            }
+        } else {
+            if(xSemaphoreTake(sensorMutex,portMAX_DELAY)==pdTRUE){
+                sensorMode = 0;
+                xSemaphoreGive(sensorMutex);
+            }
         }
         vTaskDelay(100/portTICK_PERIOD_MS);
-//         // vTaskSuspend(NULL);
+        vTaskSuspend(NULL);
     }
 }
 
@@ -110,7 +97,7 @@ void motor_task(void *pvParmeter){
         // Serial.println(sensorMode);
         int adcVal = analogRead(PIN_ANALOG_IN); // read adc
         int pwmVal = adcVal;
-        Serial.println(pwmVal);
+        // Serial.println(pwmVal);
         run_motor(pwmVal);
             // xSemaphoreGive(sensorMutex);
         
@@ -127,13 +114,15 @@ void motor_task(void *pvParmeter){
 void setup() {
     Serial.begin(115200);
     pinMode(PIR_SENSOR_PIN, INPUT);
-    // sensorMutex = xSemaphoreCreateMutex();
+    pinMode(LED_PIN, OUTPUT);
+    sensorMutex = xSemaphoreCreateMutex();
     xTaskCreate(pir_sensor_task, "pir_sensor_task", 4096, NULL, 1, &pir_sensor_Handle);
+    xTaskCreate(led_strigger_task, "led_trigger_task", 4096, NULL, 2, &led_strigger_Handle);
     xTaskCreate(motor_task, "motor_task", 4096, NULL, 3, &dc_motor_Handle);
     
     // xTaskCreate(dc_motor_task, "dc_motor_task", 4096, NULL, 3, &dc_motor_Handle);
     // xTaskCreate(motor_task, "motor_task", 4096, NULL, 3,&dc_motor_Handle);
-    // xTaskCreate(led_strigger_task, "led_trigger_task", 4096, NULL, 2, &led_strigger_Handle);
+    
 
     vTaskStartScheduler();
 }
