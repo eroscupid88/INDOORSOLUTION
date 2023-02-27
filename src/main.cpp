@@ -58,7 +58,7 @@ void led_strigger_task(void *pvParmeter){
 
 void run_motor(int number){
     // Serial.println("motor is running ********");
-    Serial.println(number);
+    // Serial.println(number);
     ledcWrite(CHANNEL, number);
 }
 
@@ -126,7 +126,7 @@ void motor_task(void *pvParmeter){
                 digitalWrite(PIN_L_PWM_EN,HIGH);
                 int adcVal = analogRead(PIN_ANALOG_IN); // read adc
                 int pwmVal = adcVal;
-                // Serial.println(pwmVal);
+                Serial.println(pwmVal);
                 run_motor(pwmVal);
                 // Configure and start TIMER0
             }
