@@ -29,6 +29,7 @@ esp_timer_handle_t timer1_handle;
 
 int sensorMode = 0; //variable to determine if the IR sensor is high or not
 int doorMode = 0;
+int a = 0;
 SemaphoreHandle_t sensorMutex; // mutex to control access to sensor output
 SemaphoreHandle_t motorMutex;
 TaskHandle_t pir_sensor_Handle;
@@ -57,7 +58,7 @@ void led_strigger_task(void *pvParmeter){
 
 void run_motor(int number){
     // Serial.println("motor is running ********");
-    // Serial.println(number);
+    Serial.println(number);
     ledcWrite(CHANNEL, number);
 }
 
@@ -66,19 +67,20 @@ void pir_sensor_task(void *pvParameter) {
     while (1)
     {
         Serial.println("Entering PIR SENSOR TASK");
+        
         if (digitalRead(PIR_SENSOR_PIN) == HIGH) {
             Serial.println("Sensor Detected************************************");
             sensorMode = 1;
             vTaskDelay(100/portTICK_PERIOD_MS);
+            if (a == 1){
+                esp_timer_start_periodic(timer0_handle, 10000000/2);  // 5 seconds
+        }
             vTaskResume(dc_motor_Handle);
             vTaskSuspend(NULL);
         } else {
             sensorMode = 0;
             vTaskDelay(100/portTICK_PERIOD_MS);
         }
-        
-        
-        
     }
 }
 
@@ -93,7 +95,8 @@ void timer0_callback(void* arg) {
     esp_timer_start_periodic(timer1_handle, 6000000);  // 8 second
         // xSemaphoreGive(motorMutex);
     // }
-    // esp_timer_stop(timer0_handle);
+    a = 1;
+    esp_timer_stop(timer0_handle);
 }
 void timer1_callback(void* arg) {
     Serial.println("TIMER1 triggered");
