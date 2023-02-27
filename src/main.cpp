@@ -7,8 +7,11 @@
 // 2 Timers callback function
 void timer0_callback(void* arg);
 void timer1_callback(void* arg);
-// #include <ledc.h>
 
+
+// Define the timer handle
+esp_timer_handle_t timer0_handle;
+esp_timer_handle_t timer1_handle;
 
 #define PIR_SENSOR_PIN 4  // infrared sensor pin
 #define LED_PIN 2   // led pin
@@ -24,12 +27,7 @@ void timer1_callback(void* arg);
 #define PIN_LPWM 19
 #define PIN_RPWM 21
 
-boolean rotationDir; // boolean variable to save the motor's rotation direction
-boolean motorfirstRun; //boolean variable to control motor runtime to 5 seconds
-int rotationSpeed; // variable to save the motor rotation speed
-int sensorMode = 0; //variable to determine if the IR sensor is high or not
-unsigned long startTime; // variable to track the start time of the initial sensor trigger
-unsigned long currentTime; // variable to track the current time 
+int sensorMode = 0; //variable to determine if the IR sensor is high or not 
 
 SemaphoreHandle_t sensorMutex; // mutex to control access to sensor output
 SemaphoreHandle_t motorMutex;
@@ -62,8 +60,7 @@ void led_strigger_task(void *pvParmeter){
 
 void run_motor(int number){
     // Serial.println("motor is running ********");
-
-    Serial.println(number);
+    // Serial.println(number);
     ledcWrite(CHANNEL, number);
 }
 
@@ -89,6 +86,17 @@ void pir_sensor_task(void *pvParameter) {
     }
 }
 
+// Callback function for TIMER0
+void timer0_callback(void* arg) {
+  Serial.println("TIMER0 triggered");
+  // Suspend task1
+//   vTaskSuspend(NULL);
+//   vTaskResume(pir_sensor_Handle);
+}
+void timer1_callback(void* arg) {
+  Serial.println("TIMER1 triggered");
+}
+
 void motor_task(void *pvParmeter){
     Serial.println("Entering Motor Task ");
     pinMode(PIN_LPWM, OUTPUT);
@@ -101,6 +109,17 @@ void motor_task(void *pvParmeter){
     //PWM signal control but Potentiometer
     ledcSetup(CHANNEL, 1000, 12);
     ledcAttachPin(PIN_RPWM, CHANNEL);
+
+    // Configure and start TIMER0
+    esp_timer_create_args_t timer0_args = {.callback = timer0_callback,.name = "timer0"};
+    esp_timer_create(&timer0_args, &timer0_handle);
+    esp_timer_start_periodic(timer0_handle, 10000000/2);  // 5 seconds
+
+    // Configure and start TIMER1
+    esp_timer_create_args_t timer1_args = {.callback = timer1_callback,.name = "timer1"};
+    esp_timer_create(&timer1_args, &timer1_handle);
+    esp_timer_start_periodic(timer1_handle, 1000000);  // 1 second
+
     while (1){
         // Serial.println("Potentiometer Task to set up PWM");
         // Serial.println("Received Semaphore");
@@ -113,7 +132,7 @@ void motor_task(void *pvParmeter){
         
         // Timer Activate to suspense the Motor Task
         // Todo
-        vTaskDelay(200/portTICK_PERIOD_MS);
+        vTaskDelay(100/portTICK_PERIOD_MS);
         // vTaskResume(pir_sensor_Handle);
         
         
