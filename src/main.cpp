@@ -2,7 +2,11 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <ESP32Servo.h>
+#include "esp_timer.h"
 
+// 2 Timers callback function
+void timer0_callback(void* arg);
+void timer1_callback(void* arg);
 // #include <ledc.h>
 
 
@@ -14,8 +18,8 @@
 #define FRQ 1000    // PWM frequency
 #define PWM_BIT 11   // PWM Precision
 #define PIN_ANALOG_IN 15  // Potentiometer
-#define PIN_R_PWM_EN 5
-#define PIN_L_PWM_EN 18
+#define PIN_R_PWM_EN 32
+#define PIN_L_PWM_EN 33
 #define CHANNEL 0
 #define PIN_LPWM 19
 #define PIN_RPWM 21
@@ -47,8 +51,8 @@ void led_strigger_task(void *pvParmeter){
             Serial.println(sensorMode);
             xSemaphoreGive(sensorMutex);
         }
-        vTaskDelay(1000/portTICK_PERIOD_MS);
-        vTaskResume(pir_sensor_Handle);
+        vTaskDelay(500/portTICK_PERIOD_MS);
+        // vTaskResume(pir_sensor_Handle);
         // vTaskSuspend(NULL);
     }
 
@@ -58,7 +62,8 @@ void led_strigger_task(void *pvParmeter){
 
 void run_motor(int number){
     // Serial.println("motor is running ********");
-    // Serial.println(number);
+
+    Serial.println(number);
     ledcWrite(CHANNEL, number);
 }
 
@@ -88,6 +93,11 @@ void motor_task(void *pvParmeter){
     Serial.println("Entering Motor Task ");
     pinMode(PIN_LPWM, OUTPUT);
     pinMode(PIN_RPWM, OUTPUT);
+    pinMode(PIN_R_PWM_EN, OUTPUT);
+    pinMode(PIN_L_PWM_EN, OUTPUT);
+    digitalWrite(PIN_R_PWM_EN,HIGH);
+    digitalWrite(PIN_L_PWM_EN,HIGH);
+    
     //PWM signal control but Potentiometer
     ledcSetup(CHANNEL, 1000, 12);
     ledcAttachPin(PIN_RPWM, CHANNEL);
@@ -103,8 +113,7 @@ void motor_task(void *pvParmeter){
         
         // Timer Activate to suspense the Motor Task
         // Todo
-
-        // vTaskDelay(1000/portTICK_PERIOD_MS);
+        vTaskDelay(200/portTICK_PERIOD_MS);
         // vTaskResume(pir_sensor_Handle);
         
         
@@ -115,9 +124,10 @@ void setup() {
     Serial.begin(115200);
     pinMode(PIR_SENSOR_PIN, INPUT);
     pinMode(LED_PIN, OUTPUT);
+    
     sensorMutex = xSemaphoreCreateMutex();
     xTaskCreate(pir_sensor_task, "pir_sensor_task", 4096, NULL, 1, &pir_sensor_Handle);
-    xTaskCreate(led_strigger_task, "led_trigger_task", 4096, NULL, 2, &led_strigger_Handle);
+    // xTaskCreate(led_strigger_task, "led_trigger_task", 4096, NULL, 10, &led_strigger_Handle);
     xTaskCreate(motor_task, "motor_task", 4096, NULL, 3, &dc_motor_Handle);
     
     // xTaskCreate(dc_motor_task, "dc_motor_task", 4096, NULL, 3, &dc_motor_Handle);
