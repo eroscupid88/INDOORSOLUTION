@@ -38,8 +38,8 @@ TaskHandle_t dc_motor_Handle;
 void led_strigger_task(void *pvParmeter){
     
     while(1){
-        Serial.println("Entering LED TRIGGER<><><><><><><><><><><><><><><><><><><><><><><><><><><><><>");
         if(sensorMode == 1){
+            Serial.println("LED TRIGGER<><><><><><><><><><><><><><><><><><><><><><><><><><><><><>");
             digitalWrite(LED_PIN,HIGH);
         }
         else if(sensorMode ==0){
@@ -62,79 +62,87 @@ void run_motor(int number){
 }
 
 void pir_sensor_task(void *pvParameter) {
+    
     while (1)
     {
         Serial.println("Entering PIR SENSOR TASK");
         if (digitalRead(PIR_SENSOR_PIN) == HIGH) {
-            Serial.println("Sensor Detected>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
-            if (xSemaphoreTake(sensorMutex, portMAX_DELAY) == pdTRUE)
-            {
-                sensorMode = 1;
-                xSemaphoreGive(sensorMutex);
-            }
+            Serial.println("Sensor Detected************************************");
+            sensorMode = 1;
+            vTaskDelay(100/portTICK_PERIOD_MS);
+            vTaskResume(dc_motor_Handle);
+            vTaskSuspend(NULL);
         } else {
-            if(xSemaphoreTake(sensorMutex,portMAX_DELAY)==pdTRUE){
-                sensorMode = 0;
-                xSemaphoreGive(sensorMutex);
-            }
+            sensorMode = 0;
+            vTaskDelay(100/portTICK_PERIOD_MS);
         }
-        vTaskDelay(100/portTICK_PERIOD_MS);
-        vTaskSuspend(NULL);
+        
+        
+        
     }
 }
 
 // Callback function for TIMER0
 void timer0_callback(void* arg) {
-  Serial.println("TIMER0 triggered");
-  // Suspend task1
-//   vTaskSuspend(NULL);
-  vTaskResume(pir_sensor_Handle);
+    Serial.println("TIMER0 triggered");
+    // Configure and start TIMER1
+    // if(xSemaphoreTake(motorMutex,portMAX_DELAY)==pdTRUE){
+    doorMode = 1;
+    esp_timer_create_args_t timer1_args = {.callback = timer1_callback,.name = "timer1"};
+    esp_timer_create(&timer1_args, &timer1_handle);
+    esp_timer_start_periodic(timer1_handle, 6000000);  // 8 second
+        // xSemaphoreGive(motorMutex);
+    // }
+    // esp_timer_stop(timer0_handle);
 }
 void timer1_callback(void* arg) {
-  Serial.println("TIMER1 triggered");
+    Serial.println("TIMER1 triggered");
+    esp_timer_stop(timer1_handle);
+    doorMode = 0;
+    sensorMode = 0;
+    digitalWrite(PIN_R_PWM_EN,LOW);
+    digitalWrite(PIN_L_PWM_EN,LOW);
+    vTaskSuspend(dc_motor_Handle);
+    vTaskResume(pir_sensor_Handle);
 }
 
 void motor_task(void *pvParmeter){
     Serial.println("Entering Motor Task ");
-    pinMode(PIN_LPWM, OUTPUT);
-    pinMode(PIN_RPWM, OUTPUT);
     pinMode(PIN_R_PWM_EN, OUTPUT);
     pinMode(PIN_L_PWM_EN, OUTPUT);
-    digitalWrite(PIN_R_PWM_EN,HIGH);
-    digitalWrite(PIN_L_PWM_EN,HIGH);
-    
     //PWM signal control but Potentiometer
     ledcSetup(CHANNEL, 1000, 12);
     ledcAttachPin(PIN_RPWM, CHANNEL);
-
-    // Configure and start TIMER0
     esp_timer_create_args_t timer0_args = {.callback = timer0_callback,.name = "timer0"};
     esp_timer_create(&timer0_args, &timer0_handle);
     esp_timer_start_periodic(timer0_handle, 10000000/2);  // 5 seconds
-
-    // Configure and start TIMER1
-    esp_timer_create_args_t timer1_args = {.callback = timer1_callback,.name = "timer1"};
-    esp_timer_create(&timer1_args, &timer1_handle);
-    esp_timer_start_periodic(timer1_handle, 1000000);  // 1 second
-
     while (1){
-        if(xSemaphoreTake(motorMutex,portMAX_DELAY)==pdTRUE){
-            if (doorMode == 0){
+        // if(xSemaphoreTake(motorMutex,portMAX_DELAY)==pdTRUE){
+            if (doorMode == 0 && sensorMode == 1){
+                digitalWrite(PIN_R_PWM_EN, HIGH);
+                digitalWrite(PIN_L_PWM_EN,HIGH);
                 int adcVal = analogRead(PIN_ANALOG_IN); // read adc
                 int pwmVal = adcVal;
                 // Serial.println(pwmVal);
                 run_motor(pwmVal);
-                xSemaphoreGive(motorMutex);
+                // Configure and start TIMER0
             }
-            else if (doorMode == 1) {
+            else if (doorMode == 1 && sensorMode == 1) {
+                digitalWrite(PIN_R_PWM_EN,HIGH);
+                digitalWrite(PIN_L_PWM_EN,HIGH);
                 run_motor(500);
-                xSemaphoreGive(motorMutex);
             }
             else {
-                xSemaphoreGive(motorMutex);
+                digitalWrite(PIN_R_PWM_EN,LOW);
+                digitalWrite(PIN_L_PWM_EN,LOW);
+                doorMode = 0;
             }
+            Serial.print("sensor mode is: ");
             Serial.println(sensorMode);
-        }
+            Serial.print("Door mode is: ");
+            Serial.println(doorMode);
+            // xSemaphoreGive(motorMutex);
+        // }
         vTaskDelay(100 / portTICK_PERIOD_MS);
         // vTaskResume(pir_sensor_Handle);
         
@@ -146,9 +154,9 @@ void setup() {
     Serial.begin(115200);
     pinMode(PIR_SENSOR_PIN, INPUT);
     pinMode(LED_PIN, OUTPUT);
+    pinMode(PIN_LPWM, OUTPUT);
+    pinMode(PIN_RPWM, OUTPUT);
     
-    sensorMutex = xSemaphoreCreateMutex();
-    motorMutex = xSemaphoreCreateMutex();
     xTaskCreate(pir_sensor_task, "pir_sensor_task", 4096, NULL, 1, &pir_sensor_Handle);
     xTaskCreate(led_strigger_task, "led_trigger_task", 4096, NULL, 10, &led_strigger_Handle);
     xTaskCreate(motor_task, "motor_task", 4096, NULL, 3, &dc_motor_Handle);
@@ -158,6 +166,7 @@ void setup() {
     
 
     vTaskStartScheduler();
+    vTaskSuspend(dc_motor_Handle);
 }
 
 void loop() {
