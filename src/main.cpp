@@ -27,8 +27,8 @@ esp_timer_handle_t timer1_handle;
 #define PIN_LPWM 19
 #define PIN_RPWM 21
 
-int sensorMode = 0; //variable to determine if the IR sensor is high or not 
-
+int sensorMode = 0; //variable to determine if the IR sensor is high or not
+int doorMode = 0;
 SemaphoreHandle_t sensorMutex; // mutex to control access to sensor output
 SemaphoreHandle_t motorMutex;
 TaskHandle_t pir_sensor_Handle;
@@ -39,17 +39,14 @@ void led_strigger_task(void *pvParmeter){
     
     while(1){
         Serial.println("Entering LED TRIGGER<><><><><><><><><><><><><><><><><><><><><><><><><><><><><>");
-        if(xSemaphoreTake(sensorMutex,portMAX_DELAY)==pdTRUE){
-            if(sensorMode == 1){
-                digitalWrite(LED_PIN,HIGH);
-            }
-            else if(sensorMode ==0){
-                digitalWrite(LED_PIN,LOW);
-            }
-            Serial.println(sensorMode);
-            xSemaphoreGive(sensorMutex);
+        if(sensorMode == 1){
+            digitalWrite(LED_PIN,HIGH);
         }
-        vTaskDelay(500/portTICK_PERIOD_MS);
+        else if(sensorMode ==0){
+            digitalWrite(LED_PIN,LOW);
+        }
+        Serial.println(sensorMode);
+        vTaskDelay(1000/portTICK_PERIOD_MS);
         // vTaskResume(pir_sensor_Handle);
         // vTaskSuspend(NULL);
     }
@@ -65,9 +62,9 @@ void run_motor(int number){
 }
 
 void pir_sensor_task(void *pvParameter) {
-    Serial.println("Entering PIR SENSOR TASK");
     while (1)
     {
+        Serial.println("Entering PIR SENSOR TASK");
         if (digitalRead(PIR_SENSOR_PIN) == HIGH) {
             Serial.println("Sensor Detected>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
             if (xSemaphoreTake(sensorMutex, portMAX_DELAY) == pdTRUE)
@@ -91,7 +88,7 @@ void timer0_callback(void* arg) {
   Serial.println("TIMER0 triggered");
   // Suspend task1
 //   vTaskSuspend(NULL);
-//   vTaskResume(pir_sensor_Handle);
+  vTaskResume(pir_sensor_Handle);
 }
 void timer1_callback(void* arg) {
   Serial.println("TIMER1 triggered");
@@ -121,18 +118,24 @@ void motor_task(void *pvParmeter){
     esp_timer_start_periodic(timer1_handle, 1000000);  // 1 second
 
     while (1){
-        // Serial.println("Potentiometer Task to set up PWM");
-        // Serial.println("Received Semaphore");
-        // Serial.println(sensorMode);
-        int adcVal = analogRead(PIN_ANALOG_IN); // read adc
-        int pwmVal = adcVal;
-        // Serial.println(pwmVal);
-        run_motor(pwmVal);
-            // xSemaphoreGive(sensorMutex);
-        
-        // Timer Activate to suspense the Motor Task
-        // Todo
-        vTaskDelay(100/portTICK_PERIOD_MS);
+        if(xSemaphoreTake(motorMutex,portMAX_DELAY)==pdTRUE){
+            if (doorMode == 0){
+                int adcVal = analogRead(PIN_ANALOG_IN); // read adc
+                int pwmVal = adcVal;
+                // Serial.println(pwmVal);
+                run_motor(pwmVal);
+                xSemaphoreGive(motorMutex);
+            }
+            else if (doorMode == 1) {
+                run_motor(500);
+                xSemaphoreGive(motorMutex);
+            }
+            else {
+                xSemaphoreGive(motorMutex);
+            }
+            Serial.println(sensorMode);
+        }
+        vTaskDelay(100 / portTICK_PERIOD_MS);
         // vTaskResume(pir_sensor_Handle);
         
         
@@ -145,8 +148,9 @@ void setup() {
     pinMode(LED_PIN, OUTPUT);
     
     sensorMutex = xSemaphoreCreateMutex();
+    motorMutex = xSemaphoreCreateMutex();
     xTaskCreate(pir_sensor_task, "pir_sensor_task", 4096, NULL, 1, &pir_sensor_Handle);
-    // xTaskCreate(led_strigger_task, "led_trigger_task", 4096, NULL, 10, &led_strigger_Handle);
+    xTaskCreate(led_strigger_task, "led_trigger_task", 4096, NULL, 10, &led_strigger_Handle);
     xTaskCreate(motor_task, "motor_task", 4096, NULL, 3, &dc_motor_Handle);
     
     // xTaskCreate(dc_motor_task, "dc_motor_task", 4096, NULL, 3, &dc_motor_Handle);
