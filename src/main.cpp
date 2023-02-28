@@ -37,7 +37,6 @@ TaskHandle_t led_strigger_Handle;
 TaskHandle_t dc_motor_Handle;
 
 void led_strigger_task(void *pvParmeter){
-    
     while(1){
         if(sensorMode == 1){
             Serial.println("LED TRIGGER<><><><><><><><><><><><><><><><><><><><><><><><><><><><><>");
@@ -74,7 +73,7 @@ void pir_sensor_task(void *pvParameter) {
             vTaskDelay(100/portTICK_PERIOD_MS);
             if (a == 1){
                 esp_timer_start_periodic(timer0_handle, 10000000/2);  // 5 seconds
-        }
+            }
             vTaskResume(dc_motor_Handle);
             vTaskSuspend(NULL);
         } else {
@@ -84,20 +83,19 @@ void pir_sensor_task(void *pvParameter) {
     }
 }
 
-// Callback function for TIMER0
+// Callback function for TIMER0 when Door is in wide open 
 void timer0_callback(void* arg) {
     Serial.println("TIMER0 triggered");
     // Configure and start TIMER1
-    // if(xSemaphoreTake(motorMutex,portMAX_DELAY)==pdTRUE){
     doorMode = 1;
+    // activate timer 1 to start hold position(force is equal to auto closer)
     esp_timer_create_args_t timer1_args = {.callback = timer1_callback,.name = "timer1"};
     esp_timer_create(&timer1_args, &timer1_handle);
     esp_timer_start_periodic(timer1_handle, 6000000);  // 8 second
-        // xSemaphoreGive(motorMutex);
-    // }
     a = 1;
     esp_timer_stop(timer0_handle);
 }
+// Callback function for TIMER1 when Door is release (auto closer work now)
 void timer1_callback(void* arg) {
     Serial.println("TIMER1 triggered");
     esp_timer_stop(timer1_handle);
@@ -133,7 +131,7 @@ void motor_task(void *pvParmeter){
             else if (doorMode == 1 && sensorMode == 1) {
                 digitalWrite(PIN_R_PWM_EN,HIGH);
                 digitalWrite(PIN_L_PWM_EN,HIGH);
-                run_motor(500);
+                run_motor(800);
             }
             else {
                 digitalWrite(PIN_R_PWM_EN,LOW);
@@ -154,7 +152,7 @@ void motor_task(void *pvParmeter){
 }
 
 void setup() {
-    Serial.begin(115200);
+    // Serial.begin(115200);
     pinMode(PIR_SENSOR_PIN, INPUT);
     pinMode(LED_PIN, OUTPUT);
     pinMode(PIN_LPWM, OUTPUT);
