@@ -119,9 +119,9 @@ void reset_button_task(void *pvParameter){
     uint32_t notificationValue;
 
     while (1) {
-        notificationValue = ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(500)); //timeout after half a second
+        notificationValue = ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(3000)); //timeout after half a second
 
-        if (notificationValue > 0 & !suspended) {
+        if (notificationValue > 0) {
         // handle notification
             vTaskSuspend(dc_motor_Handle);
             vTaskSuspend(led_strigger_Handle);
@@ -239,13 +239,16 @@ void setup() {
     // Create the fire alarm timer 
     Fire_alarm_TimerHandle = xTimerCreate("fire_alarm_timer", BUTTON_PRESS_DELAY_MS / portTICK_PERIOD_MS, pdFALSE, 0, reset_button_TimerCallback);
   
-     // Attach the reset button interrupt
+
+
+    xTaskCreate(reset_button_task, "reset_button_task", 2048, NULL, 1, &reset_button_Handle);
+    // Attach the reset button interrupt
     attachInterrupt(digitalPinToInterrupt(RESET_BUTTON_PIN), buttonInterrupt, CHANGE);
 
-    // xTaskCreate(reset_button_task, "reset_button_task", 2048, NULL, 1, &reset_button_Handle);
-    xTaskCreate(pir_sensor_task, "pir_sensor_task", 4096, NULL, 2, &pir_sensor_Handle);
-    xTaskCreate(led_strigger_task, "led_trigger_task", 4096, NULL, 10, &led_strigger_Handle);
-    xTaskCreate(motor_task, "motor_task", 4096, NULL, 3, &dc_motor_Handle);
+    
+    // xTaskCreate(pir_sensor_task, "pir_sensor_task", 4096, NULL, 2, &pir_sensor_Handle);
+    // xTaskCreate(led_strigger_task, "led_trigger_task", 4096, NULL, 10, &led_strigger_Handle);
+    // xTaskCreate(motor_task, "motor_task", 4096, NULL, 3, &dc_motor_Handle);
     
     // xTaskCreate(dc_motor_task, "dc_motor_task", 4096, NULL, 3, &dc_motor_Handle);
     // xTaskCreate(motor_task, "motor_task", 4096, NULL, 3,&dc_motor_Handle);
