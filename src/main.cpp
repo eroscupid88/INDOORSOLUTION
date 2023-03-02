@@ -26,6 +26,7 @@ TickType_t med_wait = 5000; // Time medium task spends working (ms)
 // 2 Define all function
 void timer0_callback(void* arg);
 void timer1_callback(void* arg);
+void initialize_timer();
 
 // Define the timer handle
 esp_timer_handle_t timer0_handle;
@@ -48,16 +49,48 @@ esp_timer_handle_t timer1_handle;
 //************************************************************* Globals ****************************************
 static SemaphoreHandle_t lock;
 
+int sensorMode = 0;
+int doorMode = 0;
+
 //******************************************** Help Functions ****************************************
 void run_motor(int number){
-    ledcWrite(CHANNEL, number);
+  ledcWrite(CHANNEL, number);
+}
+void enable_motor(){
+  digitalWrite(PIN_R_PWM_EN, HIGH);
+  digitalWrite(PIN_L_PWM_EN,HIGH);
+}
+void disable_motor(){
+  digitalWrite(PIN_R_PWM_EN, LOW);
+  digitalWrite(PIN_L_PWM_EN,LOW);
+}
+void drive_the_motor_to_open_door(){
+  enable_motor();
+  int adcVal = analogRead(PIN_ANALOG_IN); // read adc
+  int pwmVal = adcVal;
+  Serial.println(pwmVal);
+  run_motor(pwmVal);
+}
+void drive_the_motor_to_hold_door(){
+  enable_motor();
+  run_motor(1000);
+}
+
+void initialize_timer(){
+  //     TIMER 0
+  esp_timer_create_args_t timer0_args = {.callback = timer0_callback,.name = "timer0"};
+  esp_timer_create(&timer0_args, &timer0_handle);
+  
+  //     TIMER 1 
+  esp_timer_create_args_t timer1_args = {.callback = timer1_callback,.name = "timer1"};
+  esp_timer_create(&timer1_args, &timer1_handle);
 }
 
 /************************************TIMERS************************************************************/
 // Callback function for TIMER0 when Door is in wide open 
 void timer0_callback(void* arg) {
     Serial.println("                                        TIMER0 triggered");
-    esp_timer_start_periodic(timer1_handle, 1000000);  // 6 seconds
+    esp_timer_start_periodic(timer1_handle, 2000000);  // 6 seconds
 }
 // Callback function for TIMER1 when Door is release (auto closer work now)
 void timer1_callback(void* arg) {
@@ -72,23 +105,22 @@ void doTaskL(void *parameters) {
 
   // Do forever
   while (1) {
-
-    // Take lock
-    Serial.println("Task L trying to take lock...");
-    timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
     xSemaphoreTake(lock, portMAX_DELAY);
     esp_timer_start_periodic(timer0_handle, 5000000);  // 6 seconds
     // Say how long we spend waiting for a lock
-    Serial.print("Task L got lock. Spent ");
-    Serial.print((xTaskGetTickCount() * portTICK_PERIOD_MS) - timestamp);
-    Serial.println(" ms waiting for lock. Doing some work...");
-
+    Serial.print("Task Sensor got lock. Spent ");
     // Hog the processor for a while doing nothing
     timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
     // while ( (xTaskGetTickCount() * portTICK_PERIOD_MS) - timestamp < cs_wait);
 
-    // Release lock
-    Serial.println("Task L releasing lock.");
+    // do something over here
+    if (digitalRead(PIR_SENSOR_PIN) == HIGH && doorMode == 0){
+      sensorMode = 1;
+      doorMode = 1;
+    }
+    else {
+      sensorMode = 0;
+    }
     xSemaphoreGive(lock);
 
     // Go to sleep
@@ -98,49 +130,38 @@ void doTaskL(void *parameters) {
 
 // Task M (medium priority)
 void doTaskM(void *parameters) {
-
-  TickType_t timestamp;
-
-  // Do forever
   while (1) {
-
-    // Hog the processor for a while doing nothing
-    Serial.println("Task M doing some work...");
-    timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
-    while ( (xTaskGetTickCount() * portTICK_PERIOD_MS) - timestamp < med_wait);
-
-    // Go to sleep
-    Serial.println("Task M done!");
+    
+    if(sensorMode == 1){
+      Serial.print("Task LED detect a sensor >>>>>>> turn the LED on");
+      digitalWrite(LED_PIN,HIGH);
+    }
+    else if(sensorMode ==0){
+      digitalWrite(LED_PIN,LOW);
+    }
     vTaskDelay(100 / portTICK_PERIOD_MS);
   }
 }
 
 // Task H (high priority)
 void doTaskH(void *parameters) {
-
-  TickType_t timestamp;
-
-  // Do forever
   while (1) {
-
-    // Take lock
-    Serial.println("Task H trying to take lock...");
-    timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
+    Serial.println("Motor Task DOING SOME WORK...");
     xSemaphoreTake(lock, portMAX_DELAY);
-
-    // Say how long we spend waiting for a lock
-    Serial.print("Task H got lock. Spent ");
-    Serial.print((xTaskGetTickCount() * portTICK_PERIOD_MS) - timestamp);
-    Serial.println(" ms waiting for lock. Doing some work...");
-
-    // Hog the processor for a while doing nothing
-    timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
-    // while ( (xTaskGetTickCount() * portTICK_PERIOD_MS) - timestamp < cs_wait){
-    //   Serial.println("***************************************************");
-    // };
-
+    // MOTOR DOING SOME WORK HERE
+    if (doorMode == 0){
+      drive_the_motor_to_open_door();
+    }
+    if (doorMode == 1){
+      drive_the_motor_to_hold_door();
+    }
+    else{
+    }
+    Serial.print("                            Sensor Mode is : ");
+    Serial.println(sensorMode);
+    Serial.print("                            Door Mode is : ");
+    Serial.println(doorMode);
     // Release lock
-    Serial.println("Task H releasing lock.");
     xSemaphoreGive(lock);
     
     // Go to sleep
@@ -154,18 +175,18 @@ void doTaskH(void *parameters) {
 void setup() {
   // Configure Serial
   Serial.begin(921600);
-  esp_timer_create_args_t timer0_args = {.callback = timer0_callback,.name = "timer0"};
-  esp_timer_create(&timer0_args, &timer0_handle);
-  
-  // activate timer 1 to start hold position(force is equal to auto closer)
-  esp_timer_create_args_t timer1_args = {.callback = timer1_callback,.name = "timer1"};
-  esp_timer_create(&timer1_args, &timer1_handle);
 
+  initialize_timer();
   // GPIO PIN
   pinMode(PIR_SENSOR_PIN, INPUT);
   pinMode(LED_PIN, OUTPUT);
   pinMode(PIN_LPWM, OUTPUT);
   pinMode(PIN_RPWM, OUTPUT);
+  pinMode(PIN_R_PWM_EN, OUTPUT);
+  pinMode(PIN_L_PWM_EN, OUTPUT);
+  disable_motor();
+  ledcSetup(CHANNEL, 1000, 12);
+  ledcAttachPin(PIN_RPWM, CHANNEL);
   // Wait a moment to start (so we don't miss Serial output)
   vTaskDelay(1000 / portTICK_PERIOD_MS);
 
