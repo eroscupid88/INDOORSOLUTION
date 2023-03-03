@@ -82,7 +82,7 @@ void drive_the_motor_to_open_door(){
 void drive_the_motor_to_hold_door(){
   Serial.println("holllllllllllllllllllllllllllllllllllllllllllldddddddddddddddddddddddddddd");
   enable_motor();
-  run_motor(3800);
+  run_motor(800);
 }
 
 void initialize_timer(){
@@ -123,6 +123,7 @@ void resetButtonTask(void *pvParameters)
       if (isTaskSuspended) // If the task is currently suspended, resume it
       {
         xTaskResumeFromISR(dc_motor_Handle); // Resume the task from ISR
+        xTaskResumeFromISR(pir_sensor_Handle); // Resume the task from ISR
         doorMode = 0;
         isTaskSuspended = false; // Update the task state flag
         Serial.println("                              Resume the MOTOR TASK");
@@ -130,6 +131,7 @@ void resetButtonTask(void *pvParameters)
       else // If the task is currently running, suspend it
       {
         vTaskSuspend(dc_motor_Handle); // Suspend the task
+        vTaskSuspend(pir_sensor_Handle);
         doorMode = 3;
         esp_timer_stop(timer0_handle);
         esp_timer_stop(timer1_handle);
