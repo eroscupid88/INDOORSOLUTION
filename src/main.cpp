@@ -17,7 +17,7 @@
   static const BaseType_t app_cpu = 0;
 #else
   static const BaseType_t app_cpu = 1;
-#endif
+#endif 
 
 // Settings
 TickType_t cs_wait = 250;  // Time spent in critical section (ms)
@@ -45,6 +45,8 @@ TaskHandle_t reset_button_Handle;
 #define LED_PIN 2   // led pin
 // Define the reset button pin
 #define RESET_BUTTON_PIN 14
+#define WAIT_TIME 200 // 0.2 seconds
+#define BUTTON_PIN 14
 #define FRQ 1000    // PWM frequency
 #define PIN_ANALOG_IN 15  // Potentiometer
 #define PIN_R_PWM_EN 32   // R_EN
@@ -82,7 +84,7 @@ void drive_the_motor_to_open_door(){
 void drive_the_motor_to_hold_door(){
   Serial.println("holllllllllllllllllllllllllllllllllllllllllllldddddddddddddddddddddddddddd");
   enable_motor();
-  run_motor(800);
+  run_motor(400);
 }
 
 void initialize_timer(){
@@ -99,7 +101,7 @@ void initialize_timer(){
 // Callback function for TIMER0 when Door is in wide open 
 void timer0_callback(void* arg) {
     Serial.println("                                        TIMER0 triggered  8s  ");
-    esp_timer_start_once(timer1_handle, 4000000);  // 4 seconds
+    esp_timer_start_once(timer1_handle, 1000000);  // 4 seconds
     doorMode = 2;
 }
 // Callback function for TIMER1 when Door is release (auto closer work now)
@@ -110,42 +112,114 @@ void timer1_callback(void* arg) {
 
 //************************************* Tasks ************************************************
 
-void resetButtonTask(void *pvParameters)
-{
-  pinMode(RESET_BUTTON_PIN, INPUT_PULLUP); // Set the reset button pin as input with pull-up resistor
-  
-  bool isTaskSuspended = true; // Initialize a flag to keep track of the task's state
 
-  while (1)
+//********************************RESET BUTTON************************************************
+TaskHandle_t reset_trigger_Handle;
+TimerHandle_t reset_timer_Handle;
+bool reset_mode = true;
+void resetTimerCallback(TimerHandle_t xTimer)
+{
+  // Stop the timer and notify the long press task
+  xTimerStop(reset_timer_Handle, 0);
+  xTaskNotifyGive(reset_trigger_Handle);
+}
+
+void reset_trigger_task(void *pvParameters)
+{
+  while(1)
   {
-    if (digitalRead(RESET_BUTTON_PIN) == LOW) // If the reset button is pressed
-    {
-      if (isTaskSuspended) // If the task is currently suspended, resume it
-      {
-        xTaskResumeFromISR(dc_motor_Handle); // Resume the task from ISR
-        xTaskResumeFromISR(pir_sensor_Handle); // Resume the task from ISR
-        doorMode = 0;
-        isTaskSuspended = false; // Update the task state flag
-        Serial.println("                              Resume the MOTOR TASK");
-      }
-      else // If the task is currently running, suspend it
-      {
-        vTaskSuspend(dc_motor_Handle); // Suspend the task
-        vTaskSuspend(pir_sensor_Handle);
-        doorMode = 3;
-        esp_timer_stop(timer0_handle);
-        esp_timer_stop(timer1_handle);
-        isTaskSuspended = true; // Update the task state flag
-        Serial.println("                              Suspense the MOTOR TASK");
-      }
-      delay(100); // Wait for 1 s to debounce the button
+    uint32_t ulNotificationValue;
+    // Wait for a notification from the timer
+    ulNotificationValue = ulTaskNotifyTake(pdTRUE,pdMS_TO_TICKS(100));
+
+    if (ulNotificationValue != 0) {
+    // A notification was received, process it
+        
+        reset_mode = !reset_mode;
+        if(reset_mode){
+          disable_motor();
+          vTaskSuspend(dc_motor_Handle); // Suspend the task
+          // vTaskSuspend(pir_sensor_Handle);
+          doorMode = 3;
+          esp_timer_stop(timer0_handle);
+          esp_timer_stop(timer1_handle);
+          
+        }else{
+          
+          enable_motor();
+          xTaskResumeFromISR(dc_motor_Handle);   // Resume the task from ISR
+          // xTaskResumeFromISR(pir_sensor_Handle); // Resume the task from ISR
+          doorMode = 0;
+        }
+
+    } else {
+        // A timeout occurred
+        if (reset_mode){
+            Serial.println("                                    DISABLE");
+        } else {
+            Serial.println("                                    ENABLE");
+        }
+                 
     }
-    else
-    {
-      delay(50); // Wait for 0.5s before checking the button state again
-    }
+    
   }
 }
+
+void buttonInterrupt()
+{
+  if (digitalRead(BUTTON_PIN) == LOW)
+  {
+    // Start the timer
+    xTimerStart(reset_timer_Handle, 0);
+
+  }
+  else
+  {
+    // Button released before 2 seconds
+    xTimerStop(reset_timer_Handle, 0);
+  }
+}
+
+//********************************************************************************************
+
+
+
+
+// void resetButtonTask(void *pvParameters){
+//   pinMode(RESET_BUTTON_PIN, INPUT_PULLUP); // Set the reset button pin as input with pull-up resistor
+  
+//   bool isTaskSuspended = true; // Initialize a flag to keep track of the task's state
+
+//   while (1)
+//   {
+//     if (digitalRead(RESET_BUTTON_PIN) == LOW) // If the reset button is pressed
+//     {
+//       if (isTaskSuspended) // If the task is currently suspended, resume it
+//       {
+//         xTaskResumeFromISR(dc_motor_Handle); // Resume the task from ISR
+//         xTaskResumeFromISR(pir_sensor_Handle); // Resume the task from ISR
+//         doorMode = 0;
+//         isTaskSuspended = false; // Update the task state flag
+//         Serial.println("                              Resume the MOTOR TASK");
+//       }
+//       else // If the task is currently running, suspend it
+//       {
+//         vTaskSuspend(dc_motor_Handle); // Suspend the task
+//         vTaskSuspend(pir_sensor_Handle);
+//         doorMode = 3;
+//         esp_timer_stop(timer0_handle);
+//         esp_timer_stop(timer1_handle);
+//         isTaskSuspended = true; // Update the task state flag
+//         Serial.println("                              Suspense the MOTOR TASK");
+//       }
+//       delay(100); // Wait for 1 s to debounce the button
+//     }
+//     else
+//     {
+//       delay(50); // Wait for 0.5s before checking the button state again
+//     }
+//   }
+// }
 
 
 
@@ -168,12 +242,12 @@ void doTaskL(void *parameters) {
       sensorMode = 1;
       doorMode = 1;
     }
-    else if (digitalRead(PIR_SENSOR_PIN) == HIGH && doorMode == 2){
+    else if (digitalRead(PIR_SENSOR_PIN) == HIGH && doorMode == 3){
       // reset timer 1 if sensor is activate when door is on hold
       sensorMode = 1;
       Serial.print("                                          RESET timer 1");
       esp_timer_stop(timer1_handle);
-      esp_timer_start_once(timer1_handle, 4000000); // 4 seconds
+      esp_timer_start_once(timer1_handle, 1000000); // 4 seconds
     }
     else {
       sensorMode = 0;
@@ -210,11 +284,13 @@ void doTaskH(void *parameters) {
       disable_motor();
     }
     else if (doorMode == 1){
+      // drive_the_motor_to_hold_door();
       drive_the_motor_to_open_door();
-      esp_timer_start_once(timer0_handle, 8000000);  // 6 seconds
+      esp_timer_start_once(timer0_handle, 1000000);  // 1 seconds
     }
     else if (doorMode == 2){
-      drive_the_motor_to_hold_door();
+      // drive_the_motor_to_hold_door();
+      drive_the_motor_to_open_door();
     }
     else{
       Serial.println("disable#####");
@@ -254,6 +330,8 @@ void setup() {
   ledcSetup(CHANNEL, 1000, 12);
   ledcAttachPin(PIN_RPWM, CHANNEL);
       // Create the fire alarm timer 
+
+  pinMode(BUTTON_PIN, INPUT_PULLUP); 
     
   // Wait a moment to start (so we don't miss Serial output)
   vTaskDelay(1000 / portTICK_PERIOD_MS);
@@ -265,7 +343,14 @@ void setup() {
 
   
   // Start Button Task (low priority)
-  xTaskCreatePinnedToCore(resetButtonTask, "resetButtonTask", 10000, NULL, configMAX_PRIORITIES - 1, NULL, app_cpu); // Create the reset button task with the highest priority
+  xTaskCreatePinnedToCore(reset_trigger_task, "reset_trigger_Task", 2048, NULL, configMAX_PRIORITIES - 1, &reset_trigger_Handle,app_cpu);
+  
+  // Create the timer
+  reset_timer_Handle = xTimerCreate("resetTimer", WAIT_TIME / portTICK_PERIOD_MS, pdFALSE, 0, resetTimerCallback);
+  
+  // Attach the button interrupt
+  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), buttonInterrupt, CHANGE);
+  // xTaskCreatePinnedToCore(resetButtonTask, "resetButtonTask", 10000, NULL, configMAX_PRIORITIES - 1, NULL, app_cpu); // Create the reset button task with the highest priority
   // Start Sensor Task (low priority)
   xTaskCreatePinnedToCore(doTaskL,
                           "Task L",
