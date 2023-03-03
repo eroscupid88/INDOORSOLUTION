@@ -31,6 +31,13 @@ void initialize_timer();
 // Define the timer handle
 esp_timer_handle_t timer0_handle;
 esp_timer_handle_t timer1_handle;
+TimerHandle_t Fire_alarm_TimerHandle = NULL;
+
+// task handler
+TaskHandle_t pir_sensor_Handle;
+TaskHandle_t led_strigger_Handle;
+TaskHandle_t dc_motor_Handle;
+TaskHandle_t reset_button_Handle;
 
 //****************************************GPIO PINS*************************************
 
@@ -45,6 +52,7 @@ esp_timer_handle_t timer1_handle;
 #define CHANNEL 0
 #define PIN_LPWM 19
 #define PIN_RPWM 21
+#define BUTTON_PRESS_DELAY_MS 2000 //Length of button press
 
 //************************************************************* Globals ****************************************
 static SemaphoreHandle_t lock;
@@ -74,7 +82,7 @@ void drive_the_motor_to_open_door(){
 void drive_the_motor_to_hold_door(){
   Serial.println("holllllllllllllllllllllllllllllllllllllllllllldddddddddddddddddddddddddddd");
   enable_motor();
-  run_motor(4000);
+  run_motor(3800);
 }
 
 void initialize_timer(){
@@ -101,6 +109,44 @@ void timer1_callback(void* arg) {
 }
 
 //************************************* Tasks ************************************************
+
+void resetButtonTask(void *pvParameters)
+{
+  pinMode(RESET_BUTTON_PIN, INPUT_PULLUP); // Set the reset button pin as input with pull-up resistor
+  
+  bool isTaskSuspended = true; // Initialize a flag to keep track of the task's state
+
+  while (1)
+  {
+    if (digitalRead(RESET_BUTTON_PIN) == LOW) // If the reset button is pressed
+    {
+      if (isTaskSuspended) // If the task is currently suspended, resume it
+      {
+        xTaskResumeFromISR(dc_motor_Handle); // Resume the task from ISR
+        doorMode = 0;
+        isTaskSuspended = false; // Update the task state flag
+        Serial.println("                              Resume the MOTOR TASK");
+      }
+      else // If the task is currently running, suspend it
+      {
+        vTaskSuspend(dc_motor_Handle); // Suspend the task
+        doorMode = 3;
+        esp_timer_stop(timer0_handle);
+        esp_timer_stop(timer1_handle);
+        isTaskSuspended = true; // Update the task state flag
+        Serial.println("                              Suspense the MOTOR TASK");
+      }
+      delay(100); // Wait for 1 s to debounce the button
+    }
+    else
+    {
+      delay(50); // Wait for 0.5s before checking the button state again
+    }
+  }
+}
+
+
+
 // Task L (low priority)
 void doTaskL(void *parameters) {
 
@@ -201,9 +247,12 @@ void setup() {
   pinMode(PIN_RPWM, OUTPUT);
   pinMode(PIN_R_PWM_EN, OUTPUT);
   pinMode(PIN_L_PWM_EN, OUTPUT);
+  pinMode(RESET_BUTTON_PIN, INPUT_PULLUP);
   disable_motor();
   ledcSetup(CHANNEL, 1000, 12);
   ledcAttachPin(PIN_RPWM, CHANNEL);
+      // Create the fire alarm timer 
+    
   // Wait a moment to start (so we don't miss Serial output)
   vTaskDelay(1000 / portTICK_PERIOD_MS);
 
@@ -212,13 +261,16 @@ void setup() {
   
   // The order of starting the tasks matters to force priority inversion
 
+  
+  // Start Button Task (low priority)
+  xTaskCreatePinnedToCore(resetButtonTask, "resetButtonTask", 10000, NULL, configMAX_PRIORITIES - 1, NULL, app_cpu); // Create the reset button task with the highest priority
   // Start Sensor Task (low priority)
   xTaskCreatePinnedToCore(doTaskL,
                           "Task L",
                           1024,
                           NULL,
-                          1,
-                          NULL,
+                          4,
+                          &pir_sensor_Handle,
                           app_cpu);
 
   // Introduce a delay to force priority inversion
@@ -230,7 +282,7 @@ void setup() {
                           1024,
                           NULL,
                           3,
-                          NULL,
+                          &dc_motor_Handle,
                           app_cpu);
 
   // Start LED Task (medium priority)
@@ -239,7 +291,7 @@ void setup() {
                           1024,
                           NULL,
                           2,
-                          NULL,
+                          &led_strigger_Handle,
                           app_cpu);
 
 
