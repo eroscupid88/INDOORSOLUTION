@@ -11,7 +11,7 @@
 #include "esp_timer.h"
 #include <ESP32Servo.h>
 
-
+uint32_t Freq = 0;
 // Use only core 1 for demo purposes
 #if CONFIG_FREERTOS_UNICORE
   static const BaseType_t app_cpu = 0;
@@ -84,7 +84,7 @@ void drive_the_motor_to_open_door(){
 void drive_the_motor_to_hold_door(){
   Serial.println("holllllllllllllllllllllllllllllllllllllllllllldddddddddddddddddddddddddddd");
   enable_motor();
-  run_motor(400);
+  run_motor(700);
 }
 
 void initialize_timer(){
@@ -101,7 +101,7 @@ void initialize_timer(){
 // Callback function for TIMER0 when Door is in wide open 
 void timer0_callback(void* arg) {
     Serial.println("                                        TIMER0 triggered  8s  ");
-    esp_timer_start_once(timer1_handle, 1000000);  // 4 seconds
+    esp_timer_start_once(timer1_handle, 4000000);  // 4 seconds
     doorMode = 2;
 }
 // Callback function for TIMER1 when Door is release (auto closer work now)
@@ -129,6 +129,7 @@ void reset_trigger_task(void *pvParameters)
   while(1)
   {
     uint32_t ulNotificationValue;
+    Freq = getCpuFrequencyMhz();
     // Wait for a notification from the timer
     ulNotificationValue = ulTaskNotifyTake(pdTRUE,pdMS_TO_TICKS(100));
 
@@ -155,9 +156,11 @@ void reset_trigger_task(void *pvParameters)
     } else {
         // A timeout occurred
         if (reset_mode){
-            Serial.println("                                    DISABLE");
+            Serial.println("DISABLE");
+            // Serial.println(Freq);
         } else {
-            Serial.println("                                    ENABLE");
+            // Serial.println(Freq);
+            // Serial.println("                                    ENABLE");
         }
                  
     }
@@ -242,12 +245,12 @@ void doTaskL(void *parameters) {
       sensorMode = 1;
       doorMode = 1;
     }
-    else if (digitalRead(PIR_SENSOR_PIN) == HIGH && doorMode == 3){
+    else if (digitalRead(PIR_SENSOR_PIN) == HIGH && doorMode == 2 ){
       // reset timer 1 if sensor is activate when door is on hold
       sensorMode = 1;
       Serial.print("                                          RESET timer 1");
       esp_timer_stop(timer1_handle);
-      esp_timer_start_once(timer1_handle, 1000000); // 4 seconds
+      esp_timer_start_once(timer1_handle, 4000000); // 4 seconds
     }
     else {
       sensorMode = 0;
@@ -286,11 +289,11 @@ void doTaskH(void *parameters) {
     else if (doorMode == 1){
       // drive_the_motor_to_hold_door();
       drive_the_motor_to_open_door();
-      esp_timer_start_once(timer0_handle, 1000000);  // 1 seconds
+      esp_timer_start_once(timer0_handle, 6000000);  // 1 seconds
     }
     else if (doorMode == 2){
-      // drive_the_motor_to_hold_door();
-      drive_the_motor_to_open_door();
+      drive_the_motor_to_hold_door();
+      // drive_the_motor_to_open_door();
     }
     else{
       Serial.println("disable#####");
@@ -327,7 +330,7 @@ void setup() {
   pinMode(PIN_L_PWM_EN, OUTPUT);
   pinMode(RESET_BUTTON_PIN, INPUT_PULLUP);
   disable_motor();
-  ledcSetup(CHANNEL, 1000, 12);
+  ledcSetup(CHANNEL, 5000, 12);
   ledcAttachPin(PIN_RPWM, CHANNEL);
       // Create the fire alarm timer 
 
