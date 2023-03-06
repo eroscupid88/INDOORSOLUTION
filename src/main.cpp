@@ -52,8 +52,8 @@ TaskHandle_t reset_button_Handle;
 #define PIN_R_PWM_EN 32   // R_EN
 #define PIN_L_PWM_EN 33   // L_EN
 #define CHANNEL 0
-#define PIN_LPWM 19
-#define PIN_RPWM 21
+#define PIN_LPWM 13
+#define PIN_RPWM 12  // drive PWM
 #define BUTTON_PRESS_DELAY_MS 2000 //Length of button press
 
 //************************************************************* Globals ****************************************
@@ -77,8 +77,8 @@ void disable_motor(){
 void drive_the_motor_to_open_door(){
   enable_motor();
   int adcVal = analogRead(PIN_ANALOG_IN); // read adc
-  int pwmVal = adcVal;
-  Serial.println(pwmVal);
+  float pwmVal = adcVal;
+  Serial.println(pwmVal/4096);
   run_motor(pwmVal);
 }
 void drive_the_motor_to_hold_door(){
@@ -245,12 +245,12 @@ void doTaskL(void *parameters) {
       sensorMode = 1;
       doorMode = 1;
     }
-    else if (digitalRead(PIR_SENSOR_PIN) == HIGH && doorMode == 2 ){
+    else if (digitalRead(PIR_SENSOR_PIN) == HIGH && doorMode == 5 ){
       // reset timer 1 if sensor is activate when door is on hold
       sensorMode = 1;
       Serial.print("                                          RESET timer 1");
       esp_timer_stop(timer1_handle);
-      esp_timer_start_once(timer1_handle, 4000000); // 4 seconds
+      esp_timer_start_once(timer1_handle, 1000000/3); // 1/32 seconds
     }
     else {
       sensorMode = 0;
@@ -289,11 +289,11 @@ void doTaskH(void *parameters) {
     else if (doorMode == 1){
       // drive_the_motor_to_hold_door();
       drive_the_motor_to_open_door();
-      esp_timer_start_once(timer0_handle, 6000000);  // 1 seconds
+      esp_timer_start_once(timer0_handle, 4000000);  // 1 seconds
     }
     else if (doorMode == 2){
-      drive_the_motor_to_hold_door();
-      // drive_the_motor_to_open_door();
+      // drive_the_motor_to_hold_door();
+      drive_the_motor_to_open_door();
     }
     else{
       Serial.println("disable#####");
@@ -330,7 +330,7 @@ void setup() {
   pinMode(PIN_L_PWM_EN, OUTPUT);
   pinMode(RESET_BUTTON_PIN, INPUT_PULLUP);
   disable_motor();
-  ledcSetup(CHANNEL, 5000, 12);
+  ledcSetup(CHANNEL, 2000, 12);
   ledcAttachPin(PIN_RPWM, CHANNEL);
       // Create the fire alarm timer 
 
