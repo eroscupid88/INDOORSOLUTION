@@ -52,7 +52,8 @@ TaskHandle_t reset_button_Handle;
 #define PIN_R_PWM_EN 32   // R_EN
 #define PIN_L_PWM_EN 33   // L_EN
 #define CHANNEL 0
-#define PIN_LPWM 13
+#define CHANNEL1 1
+#define PIN_LPWM 34
 #define PIN_RPWM 12  // drive PWM
 #define BUTTON_PRESS_DELAY_MS 2000 //Length of button press
 
@@ -61,10 +62,20 @@ static SemaphoreHandle_t lock;
 
 int sensorMode = 0;
 int doorMode = 0;
+int directioMode = 0;
+int64_t elapsed_time = 0;
+int64_t start_time1 = 0;
 
 //******************************************** Help Functions ****************************************
 void run_motor(int number){
+  ledcAttachPin(PIN_RPWM, CHANNEL);
+  // ledcAttachPin(PIN_LPWM, CHANNEL1);
   ledcWrite(CHANNEL, number);
+}
+void run_motor_close(){
+  // ledcAttachPin(PIN_RPWM, CHANNEL);
+  ledcAttachPin(PIN_LPWM, CHANNEL);
+  ledcWrite(CHANNEL, 3000);
 }
 void enable_motor(){
   digitalWrite(PIN_R_PWM_EN, HIGH);
@@ -81,10 +92,15 @@ void drive_the_motor_to_open_door(){
   Serial.println(pwmVal/4096);
   run_motor(pwmVal);
 }
-void drive_the_motor_to_hold_door(){
-  Serial.println("holllllllllllllllllllllllllllllllllllllllllllldddddddddddddddddddddddddddd");
+void drive_the_motor_to_close_door(){
+  disable_motor();
+  vTaskDelay(250 / portTICK_PERIOD_MS);
   enable_motor();
-  run_motor(700);
+  run_motor_close();
+}
+void drive_the_motor_to_hold_door(){
+  enable_motor();
+  run_motor(1500);
 }
 
 void initialize_timer(){
@@ -101,13 +117,32 @@ void initialize_timer(){
 // Callback function for TIMER0 when Door is in wide open 
 void timer0_callback(void* arg) {
     Serial.println("                                        TIMER0 triggered  8s  ");
-    esp_timer_start_once(timer1_handle, 4000000);  // 4 seconds
-    doorMode = 2;
+    elapsed_time = 0;
+    if (doorMode == 1){
+      esp_timer_start_once(timer1_handle, 4000000);  // 4 seconds
+      doorMode = 2;
+    }
+    else if (doorMode == 3) {
+      doorMode = 5;
+    }
+    else if (doorMode == 4){
+      esp_timer_start_once(timer1_handle, 4000000);  // 4 seconds
+      doorMode = 2;
+    }
+    
 }
 // Callback function for TIMER1 when Door is release (auto closer work now)
 void timer1_callback(void* arg) {
     Serial.println("                                        TIMER1 triggered  4s  ");
-    doorMode = 3;
+    elapsed_time = 0;
+    if (doorMode == 2){
+      start_time1 = esp_timer_get_time();
+      doorMode = 3;
+    }
+    else if (doorMode == 3){
+      Serial.print("                                                       ******************* ");
+      doorMode = 5;
+    }
 }
 
 //************************************* Tasks ************************************************
@@ -156,7 +191,7 @@ void reset_trigger_task(void *pvParameters)
     } else {
         // A timeout occurred
         if (reset_mode){
-            Serial.println("DISABLE");
+            // Serial.println("DISABLE");
             // Serial.println(Freq);
         } else {
             // Serial.println(Freq);
@@ -186,46 +221,6 @@ void buttonInterrupt()
 //********************************************************************************************
 
 
-
-
-// void resetButtonTask(void *pvParameters){
-//   pinMode(RESET_BUTTON_PIN, INPUT_PULLUP); // Set the reset button pin as input with pull-up resistor
-  
-//   bool isTaskSuspended = true; // Initialize a flag to keep track of the task's state
-
-//   while (1)
-//   {
-//     if (digitalRead(RESET_BUTTON_PIN) == LOW) // If the reset button is pressed
-//     {
-//       if (isTaskSuspended) // If the task is currently suspended, resume it
-//       {
-//         xTaskResumeFromISR(dc_motor_Handle); // Resume the task from ISR
-//         xTaskResumeFromISR(pir_sensor_Handle); // Resume the task from ISR
-//         doorMode = 0;
-//         isTaskSuspended = false; // Update the task state flag
-//         Serial.println("                              Resume the MOTOR TASK");
-//       }
-//       else // If the task is currently running, suspend it
-//       {
-//         vTaskSuspend(dc_motor_Handle); // Suspend the task
-//         vTaskSuspend(pir_sensor_Handle);
-//         doorMode = 3;
-//         esp_timer_stop(timer0_handle);
-//         esp_timer_stop(timer1_handle);
-//         isTaskSuspended = true; // Update the task state flag
-//         Serial.println("                              Suspense the MOTOR TASK");
-//       }
-//       delay(100); // Wait for 1 s to debounce the button
-//     }
-//     else
-//     {
-//       delay(50); // Wait for 0.5s before checking the button state again
-//     }
-//   }
-// }
-
-
-
 // Task L (low priority)
 void doTaskL(void *parameters) {
 
@@ -235,7 +230,7 @@ void doTaskL(void *parameters) {
   while (1) {
     xSemaphoreTake(lock, portMAX_DELAY);
     // Say how long we spend waiting for a lock
-    Serial.print("Task Sensor got lock. Spent ");
+    // Serial.print("Task Sensor got lock. Spent ");
     // Hog the processor for a while doing nothing
     timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
     // while ( (xTaskGetTickCount() * portTICK_PERIOD_MS) - timestamp < cs_wait);
@@ -245,12 +240,24 @@ void doTaskL(void *parameters) {
       sensorMode = 1;
       doorMode = 1;
     }
-    else if (digitalRead(PIR_SENSOR_PIN) == HIGH && doorMode == 5 ){
+    else if (digitalRead(PIR_SENSOR_PIN) == HIGH && doorMode == 2 ){
       // reset timer 1 if sensor is activate when door is on hold
       sensorMode = 1;
-      Serial.print("                                          RESET timer 1");
+      Serial.print("                                          RESET timer 1   ");
+      
       esp_timer_stop(timer1_handle);
-      esp_timer_start_once(timer1_handle, 1000000/3); // 1/32 seconds
+      esp_timer_start_once(timer1_handle, 4000000); // 4s
+    }
+    else if (digitalRead(PIR_SENSOR_PIN) == HIGH && doorMode == 3){
+      sensorMode = 1;
+      esp_timer_stop(timer0_handle);
+      // esp_timer_start_once(timer0_handle, 8000000); // 4s
+      doorMode = 4;
+    }
+    else if (doorMode == 3){
+      sensorMode = 0;
+      
+      esp_timer_start_once(timer1_handle, 4000000); // s
     }
     else {
       sensorMode = 0;
@@ -267,7 +274,6 @@ void doTaskM(void *parameters) {
   while (1) {
     
     if(sensorMode == 1){
-      Serial.print("Task LED detect a sensor >>>>>>> turn the LED on");
       digitalWrite(LED_PIN,HIGH);
     }
     else if(sensorMode ==0){
@@ -280,7 +286,7 @@ void doTaskM(void *parameters) {
 // Task H (high priority)
 void doTaskH(void *parameters) {
   while (1) {
-    Serial.println("Motor Task DOING SOME WORK...");
+    // Serial.println("Motor Task DOING SOME WORK...");
     xSemaphoreTake(lock, portMAX_DELAY);
     // MOTOR DOING SOME WORK HERE
     if (doorMode == 0){
@@ -289,16 +295,32 @@ void doTaskH(void *parameters) {
     else if (doorMode == 1){
       // drive_the_motor_to_hold_door();
       drive_the_motor_to_open_door();
-      esp_timer_start_once(timer0_handle, 4000000);  // 1 seconds
+      esp_timer_start_once(timer0_handle, 4000000);  // 4 seconds
     }
     else if (doorMode == 2){
-      // drive_the_motor_to_hold_door();
-      drive_the_motor_to_open_door();
+      drive_the_motor_to_hold_door();
+      // drive_the_motor_to_open_door();
     }
-    else{
-      Serial.println("disable#####");
+    else if (doorMode == 3){
+      drive_the_motor_to_close_door();
+      // doorMode = 0;
+    }
+    else if  (doorMode == 4){
+      drive_the_motor_to_open_door();
+      int64_t current_time = esp_timer_get_time();
+      int64_t elapsed_time1 = current_time - start_time1;
+      esp_timer_start_once(timer0_handle, elapsed_time1); // 6 seconds
+      Serial.print("                    Elapse time is              :         ");
+      Serial.print(elapsed_time1);
+      // elapsed_time = 0;
+    }
+    else if (doorMode == 5){
       disable_motor();
-      vTaskDelay(5000 / portTICK_PERIOD_MS); // 5s
+      vTaskDelay(4000 / portTICK_PERIOD_MS);
+      doorMode = 0;
+    }
+    else
+    {
       doorMode = 0;
     }
     Serial.print("                            Sensor Mode is : ");
@@ -331,7 +353,9 @@ void setup() {
   pinMode(RESET_BUTTON_PIN, INPUT_PULLUP);
   disable_motor();
   ledcSetup(CHANNEL, 2000, 12);
-  ledcAttachPin(PIN_RPWM, CHANNEL);
+  // ledcSetup(CHANNEL1, 2000, 12);
+  // ledcAttachPin(PIN_RPWM, CHANNEL);
+  // ledcAttachPin(PIN_LPWM, CHANNEL1);
       // Create the fire alarm timer 
 
   pinMode(BUTTON_PIN, INPUT_PULLUP); 
