@@ -101,7 +101,7 @@ void initialize_timer(){
 // Callback function for TIMER0 when Door is in wide open 
 void timer0_callback(void* arg) {
     Serial.println("                                        TIMER0 triggered  8s  ");
-    esp_timer_start_once(timer1_handle, 4000000);  // 4 seconds
+    esp_timer_start_once(timer1_handle, 1000000);  // 4 seconds
     doorMode = 2;
 }
 // Callback function for TIMER1 when Door is release (auto closer work now)
@@ -250,7 +250,7 @@ void doTaskL(void *parameters) {
       sensorMode = 1;
       Serial.print("                                          RESET timer 1");
       esp_timer_stop(timer1_handle);
-      esp_timer_start_once(timer1_handle, 1000000/3); // 1/32 seconds
+      esp_timer_start_once(timer1_handle, 1000000); // 1/32 seconds
     }
     else {
       sensorMode = 0;
@@ -289,7 +289,7 @@ void doTaskH(void *parameters) {
     else if (doorMode == 1){
       // drive_the_motor_to_hold_door();
       drive_the_motor_to_open_door();
-      esp_timer_start_once(timer0_handle, 4000000);  // 1 seconds
+      esp_timer_start_once(timer0_handle, 1000000);  // 1 seconds
     }
     else if (doorMode == 2){
       // drive_the_motor_to_hold_door();
