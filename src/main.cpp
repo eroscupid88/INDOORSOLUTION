@@ -47,11 +47,7 @@ TaskHandle_t reset_button_Handle;
 #define RESET_BUTTON_PIN 14
 #define FRQ 1000    // PWM frequency
 #define PIN_ANALOG_IN 15  // Potentiometer
-#define PIN_R_PWM_EN 32   // R_EN
-#define PIN_L_PWM_EN 33   // L_EN
 #define CHANNEL 0
-#define PIN_LPWM 19
-#define PIN_RPWM 21
 #define BUTTON_PRESS_DELAY_MS 2000 //Length of button press
 
 //************************************************************* Globals ****************************************
@@ -61,29 +57,6 @@ int sensorMode = 0;
 int doorMode = 0;
 
 //******************************************** Help Functions ****************************************
-void run_motor(int number){
-  ledcWrite(CHANNEL, number);
-}
-void enable_motor(){
-  digitalWrite(PIN_R_PWM_EN, HIGH);
-  digitalWrite(PIN_L_PWM_EN,HIGH);
-}
-void disable_motor(){
-  digitalWrite(PIN_R_PWM_EN, LOW);
-  digitalWrite(PIN_L_PWM_EN,LOW);
-}
-void drive_the_motor_to_open_door(){
-  enable_motor();
-  int adcVal = analogRead(PIN_ANALOG_IN); // read adc
-  int pwmVal = adcVal;
-  Serial.println(pwmVal);
-  run_motor(pwmVal);
-}
-void drive_the_motor_to_hold_door(){
-  Serial.println("holllllllllllllllllllllllllllllllllllllllllllldddddddddddddddddddddddddddd");
-  enable_motor();
-  run_motor(800);
-}
 
 void initialize_timer(){
   //     TIMER 0
@@ -207,18 +180,16 @@ void doTaskH(void *parameters) {
     xSemaphoreTake(lock, portMAX_DELAY);
     // MOTOR DOING SOME WORK HERE
     if (doorMode == 0){
-      disable_motor();
+      //
     }
     else if (doorMode == 1){
-      drive_the_motor_to_open_door();
       esp_timer_start_once(timer0_handle, 8000000);  // 6 seconds
     }
     else if (doorMode == 2){
-      drive_the_motor_to_hold_door();
     }
     else{
       Serial.println("disable#####");
-      disable_motor();
+
       vTaskDelay(5000 / portTICK_PERIOD_MS); // 5s
       doorMode = 0;
     }
@@ -245,14 +216,10 @@ void setup() {
   // GPIO PIN
   pinMode(PIR_SENSOR_PIN, INPUT);
   pinMode(LED_PIN, OUTPUT);
-  pinMode(PIN_LPWM, OUTPUT);
-  pinMode(PIN_RPWM, OUTPUT);
-  pinMode(PIN_R_PWM_EN, OUTPUT);
-  pinMode(PIN_L_PWM_EN, OUTPUT);
   pinMode(RESET_BUTTON_PIN, INPUT_PULLUP);
-  disable_motor();
   ledcSetup(CHANNEL, 1000, 12);
-  ledcAttachPin(PIN_RPWM, CHANNEL);
+  // need to fix this
+  // ledcAttachPin(PIN_RPWM, CHANNEL);
       // Create the fire alarm timer 
     
   // Wait a moment to start (so we don't miss Serial output)
