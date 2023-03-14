@@ -9,7 +9,7 @@
 #include "esp_log.h"
 #include "driver/gpio.h"
 #include "esp_timer.h"
-#include <ESP32Servo.h>
+#include <Stepper.h>
 
 
 // Use only core 1 for demo purposes
@@ -50,8 +50,30 @@ TaskHandle_t reset_button_Handle;
 #define CHANNEL 0
 #define BUTTON_PRESS_DELAY_MS 2000 //Length of button press
 
+// Motor Connections (unipolar motor driver)
+const int In1 = 5;
+const int In2 = 18;
+const int In3 = 19;
+const int In4 = 21;
+
+// Number of steps per internal motor revolution 
+const float STEPS_PER_REV = 32; 
+ 
+//  Amount of Gear Reduction
+const float GEAR_RED = 64;
+ 
+// Number of steps per geared output rotation
+const float STEPS_PER_OUT_REV = STEPS_PER_REV * GEAR_RED;
+ 
+// Define Variables
+ 
+// Number of Steps Required
+int StepsRequired;
+Stepper steppermotor(STEPS_PER_REV, In1, In3, In2, In4);
+
 //************************************************************* Globals ****************************************
 static SemaphoreHandle_t lock;
+// AccelStepper myStepper(AccelStepper::FULL4WIRE, In1, In3, In2, In4); 
 
 int sensorMode = 0;
 int doorMode = 0;
@@ -177,33 +199,33 @@ void doTaskM(void *parameters) {
 void doTaskH(void *parameters) {
   while (1) {
     Serial.println("Motor Task DOING SOME WORK...");
-    xSemaphoreTake(lock, portMAX_DELAY);
+    // xSemaphoreTake(lock, portMAX_DELAY);
     // MOTOR DOING SOME WORK HERE
-    if (doorMode == 0){
-      //
-    }
-    else if (doorMode == 1){
-      esp_timer_start_once(timer0_handle, 8000000);  // 6 seconds
-    }
-    else if (doorMode == 2){
-    }
-    else{
-      Serial.println("disable#####");
-
-      vTaskDelay(5000 / portTICK_PERIOD_MS); // 5s
-      doorMode = 0;
-    }
-    Serial.print("                            Sensor Mode is : ");
-    Serial.println(sensorMode);
-    Serial.print("                            Door Mode is : ");
-    Serial.println(doorMode);
-    // Release lock
-    xSemaphoreGive(lock);
+    steppermotor.setSpeed(1);    
+    StepsRequired  =  4;
+    steppermotor.step(StepsRequired);
+    delay(2000);
+  
+    // Rotate CW 1/2 turn slowly
+    StepsRequired  =  STEPS_PER_OUT_REV / 2; 
+    steppermotor.setSpeed(300);   
+    steppermotor.step(StepsRequired);
+    delay(1000);
+    
+    // Rotate CCW 1/2 turn quickly
+    StepsRequired  =  - STEPS_PER_OUT_REV / 2;   
+    steppermotor.setSpeed(1000);  
+    steppermotor.step(StepsRequired);
+    delay(2000);
+    // Release lockZ
+    // xSemaphoreGive(lock);
     
     // Go to sleep
     vTaskDelay(100 / portTICK_PERIOD_MS);
   }
 }
+
+
 
 //*****************************************************************************
 // Main (runs as its own task with priority 1 on core 1)
@@ -218,9 +240,16 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
   pinMode(RESET_BUTTON_PIN, INPUT_PULLUP);
   ledcSetup(CHANNEL, 1000, 12);
+
   // need to fix this
   // ledcAttachPin(PIN_RPWM, CHANNEL);
       // Create the fire alarm timer 
+
+  // stepper motor
+  // myStepper.setMaxSpeed(100.0);
+  // myStepper.setSpeed(50);
+  // myStepper.moveTo(2000);
+  
     
   // Wait a moment to start (so we don't miss Serial output)
   vTaskDelay(1000 / portTICK_PERIOD_MS);
