@@ -50,26 +50,7 @@ TaskHandle_t reset_button_Handle;
 #define CHANNEL 0
 #define BUTTON_PRESS_DELAY_MS 2000 //Length of button press
 
-// Motor Connections (unipolar motor driver)
-const int In1 = 5;
-const int In2 = 18;
-const int In3 = 19;
-const int In4 = 21;
 
-// Number of steps per internal motor revolution 
-const float STEPS_PER_REV = 32; 
- 
-//  Amount of Gear Reduction
-const float GEAR_RED = 64;
- 
-// Number of steps per geared output rotation
-const float STEPS_PER_OUT_REV = STEPS_PER_REV * GEAR_RED;
- 
-// Define Variables
- 
-// Number of Steps Required
-int StepsRequired;
-Stepper steppermotor(STEPS_PER_REV, In1, In3, In2, In4);
 
 //************************************************************* Globals ****************************************
 static SemaphoreHandle_t lock;
@@ -77,6 +58,18 @@ static SemaphoreHandle_t lock;
 
 int sensorMode = 0;
 int doorMode = 0;
+
+
+// Defin pins
+ 
+int reverseSwitch = 14;  // Push button for reverse
+int driverPUL = 18;    // PUL- pin 
+int driverDIR = 19;    // DIR- pin
+int spd = 15;     // Potentiometer
+
+// Variables
+int pd = 500;       // Pulse Delay period
+boolean setdir = LOW; // Set Direction
 
 //******************************************** Help Functions ****************************************
 
@@ -142,6 +135,16 @@ void resetButtonTask(void *pvParameters)
   }
 }
 
+void run_motor(){
+  Serial.print("Motor is running");
+  pd = map((analogRead(spd)), 0, 1023, 2000, 50);
+  digitalWrite(driverDIR,setdir);
+  digitalWrite(driverPUL,HIGH);
+  delayMicroseconds(pd);
+  digitalWrite(driverPUL,LOW);
+  delayMicroseconds(pd);
+}
+
 
 
 // Task L (low priority)
@@ -185,7 +188,7 @@ void doTaskM(void *parameters) {
   while (1) {
     
     if(sensorMode == 1){
-      Serial.print("Task LED detect a sensor >>>>>>> turn the LED on");
+      // Serial.print("Task LED detect a sensor >>>>>>> turn the LED on");
       digitalWrite(LED_PIN,HIGH);
     }
     else if(sensorMode ==0){
@@ -198,33 +201,21 @@ void doTaskM(void *parameters) {
 // Task H (high priority)
 void doTaskH(void *parameters) {
   while (1) {
-    Serial.println("Motor Task DOING SOME WORK...");
+    // Serial.println("Motor Task DOING SOME WORK...");
     // xSemaphoreTake(lock, portMAX_DELAY);
     // MOTOR DOING SOME WORK HERE
-    steppermotor.setSpeed(1);    
-    StepsRequired  =  4;
-    steppermotor.step(StepsRequired);
-    delay(2000);
-  
-    // Rotate CW 1/2 turn slowly
-    StepsRequired  =  STEPS_PER_OUT_REV / 2; 
-    steppermotor.setSpeed(300);   
-    steppermotor.step(StepsRequired);
-    delay(1000);
-    
-    // Rotate CCW 1/2 turn quickly
-    StepsRequired  =  - STEPS_PER_OUT_REV / 2;   
-    steppermotor.setSpeed(1000);  
-    steppermotor.step(StepsRequired);
-    delay(2000);
-    // Release lockZ
+    run_motor();
     // xSemaphoreGive(lock);
-    
+
     // Go to sleep
     vTaskDelay(100 / portTICK_PERIOD_MS);
   }
 }
 
+void revmotor (){
+  Serial.print("#################                 change dirrection");
+  setdir = !setdir;
+}
 
 
 //*****************************************************************************
@@ -238,18 +229,16 @@ void setup() {
   // GPIO PIN
   pinMode(PIR_SENSOR_PIN, INPUT);
   pinMode(LED_PIN, OUTPUT);
-  pinMode(RESET_BUTTON_PIN, INPUT_PULLUP);
+  // pinMode(RESET_BUTTON_PIN, INPUT_PULLUP);
   ledcSetup(CHANNEL, 1000, 12);
+
+  pinMode (driverPUL, OUTPUT);
+  pinMode (driverDIR, OUTPUT);
+  attachInterrupt(digitalPinToInterrupt(reverseSwitch), revmotor, FALLING);
 
   // need to fix this
   // ledcAttachPin(PIN_RPWM, CHANNEL);
-      // Create the fire alarm timer 
-
-  // stepper motor
-  // myStepper.setMaxSpeed(100.0);
-  // myStepper.setSpeed(50);
-  // myStepper.moveTo(2000);
-  
+      // Create the fire alarm timer   
     
   // Wait a moment to start (so we don't miss Serial output)
   vTaskDelay(1000 / portTICK_PERIOD_MS);
@@ -261,7 +250,7 @@ void setup() {
 
   
   // Start Button Task (low priority)
-  xTaskCreatePinnedToCore(resetButtonTask, "resetButtonTask", 10000, NULL, configMAX_PRIORITIES - 1, NULL, app_cpu); // Create the reset button task with the highest priority
+  // xTaskCreatePinnedToCore(resetButtonTask, "resetButtonTask", 10000, NULL, configMAX_PRIORITIES - 1, NULL, app_cpu); // Create the reset button task with the highest priority
   // Start Sensor Task (low priority)
   xTaskCreatePinnedToCore(doTaskL,
                           "Task L",
