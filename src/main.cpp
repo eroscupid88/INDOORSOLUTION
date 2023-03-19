@@ -52,6 +52,10 @@ TaskHandle_t reset_button_Handle;
 #define CHANNEL 0
 #define OPEN_DOOR_BUTTON_PIN 22
 #define BUTTON_PRESS_DELAY_MS 2000 //Length of button press
+#define DRIVER_PUL 18
+#define DRIVER_DIR 19
+#define RELAY_INPUT 23
+#define stepsPerRevolution 3200
 
 //************************************************************* Globals ****************************************
 static SemaphoreHandle_t lock;
@@ -61,19 +65,38 @@ int doorMode = 0;
 
 //******************************************** Help Functions ****************************************
 
+void read_analog(){
+  int adcVal = analogRead(PIN_ANALOG_IN); // read adc
+  int pwmVal = adcVal;
+  Serial.println(pwmVal);
+  // run_motor(pwmVal);
+}
+
 void openning_door_signal(){
   Serial.print("OPEN DOOR PUSHED");
   if (doorMode == 0){
     doorMode = 1;
   }
-  else
-  {
-    doorMode = 0;
-  }
 }
 
-void run_motor(int number){
-  ledcWrite(CHANNEL, number);
+void open_door(){
+  if (doorMode == 2) {
+    digitalWrite(DRIVER_DIR, LOW);
+    // Spin the stepper motor 1 revolution slowly:
+    for (int i = 0; i < stepsPerRevolution; i++) {
+      // These four lines result in 1 step:
+      
+      digitalWrite(DRIVER_PUL, HIGH);
+      delayMicroseconds(2500);
+      digitalWrite(DRIVER_PUL, LOW);
+      delayMicroseconds(2500);    
+    }
+    doorMode = 3;
+    digitalWrite(RELAY_INPUT,LOW);
+    esp_timer_start_once(timer0_handle, 4000000); // 4 seconds
+  }
+
+  delay(1000);
 }
 
 void initialize_timer(){
@@ -89,12 +112,20 @@ void initialize_timer(){
 /************************************TIMERS************************************************************/
 // Callback function for TIMER0 when Door is in wide open 
 void timer0_callback(void* arg) {
-    Serial.println("                                        TIMER0 triggered  8s  ");
+    Serial.println("                                        TIMER0 triggered  4s  ");
+    xSemaphoreTake(lock, portMAX_DELAY);
+    doorMode = 4;
+    xSemaphoreGive(lock);
+    esp_timer_start_once(timer1_handle, 8000000); // 8 seconds
+    
     
 }
 // Callback function for TIMER1 when Door is release (auto closer work now)
 void timer1_callback(void* arg) {
-    Serial.println("                                        TIMER1 triggered  4s  ");
+    Serial.println("                                        TIMER1 triggered  8s  MOTOR is turning off ");
+    xSemaphoreTake(lock, portMAX_DELAY);
+    doorMode = 0;
+    xSemaphoreGive(lock);
 }
 
 //************************************* Tasks ************************************************
@@ -176,19 +207,25 @@ void doTaskL(void *parameters) {
   // Do forever
   while (1) {
     xSemaphoreTake(lock, portMAX_DELAY);
-    Serial.print("                                      Task Sensor is on");
+    // Serial.print("                                      Task Sensor is on");
     // do something over here
-    if (digitalRead(PIR_SENSOR_PIN) == LOW && doorMode == 1){
+    if (digitalRead(PIR_SENSOR_PIN) == HIGH && doorMode == 1){
+      doorMode = 0;
+    }
+    else if (digitalRead(PIR_SENSOR_PIN) == LOW && doorMode == 1){
       sensorMode = 1;
       doorMode = 2;
     }
-    // else if (digitalRead(PIR_SENSOR_PIN) == HIGH && doorMode == 5 ){
-    //   // reset timer 1 if sensor is activate when door is on hold
-    //   sensorMode = 1;
-    //   Serial.print("                                          RESET timer 1");
-    //   esp_timer_stop(timer1_handle);
-    //   esp_timer_start_once(timer1_handle, 1000000); // 1/32 seconds
-    // }
+    else if (digitalRead(PIR_SENSOR_PIN) == HIGH && doorMode == 3 ){
+      // reset timer 1 if sensor is activate when door is on hold
+      sensorMode = 1;
+      Serial.print("                                          RESET timer 0");
+      esp_timer_stop(timer0_handle);
+      esp_timer_start_once(timer0_handle, 8000000); // 1/32 seconds
+    }
+    else if (digitalRead(PIR_SENSOR_PIN) == HIGH && doorMode == 4){
+      
+    }
     else {
       sensorMode = 0;
     }
@@ -202,9 +239,25 @@ void doTaskL(void *parameters) {
 // Task M (medium priority)
 void doTaskM(void *parameters) {
   while (1) {
+
+    // digitalWrite(RELAY_INPUT,HIGH);
+    // vTaskDelay(500 / portTICK_PERIOD_MS);
+    // digitalWrite(RELAY_INPUT,LOW);
+    // vTaskDelay(500 / portTICK_PERIOD_MS);
+
+    // xSemaphoreTake(lock, portMAX_DELAY);
+
+    if (doorMode == 2 || doorMode == 3) {
+      digitalWrite(RELAY_INPUT,HIGH);
+    }
+    else{
+      digitalWrite(RELAY_INPUT,LOW);
+    }
     
+    xSemaphoreGive(lock);
+
     if(sensorMode == 1){
-      Serial.print("Task LED detect a sensor >>>>>>> turn the LED on");
+      // Serial.print("Task LED detect a sensor >>>>>>> turn the LED on");
       digitalWrite(LED_PIN,HIGH);
     }
     else if(sensorMode ==0){
@@ -217,23 +270,12 @@ void doTaskM(void *parameters) {
 // Task H (high priority)
 void doTaskH(void *parameters) {
   while (1) {
-    
+    read_analog();
     xSemaphoreTake(lock, portMAX_DELAY);
     // MOTOR DOING SOME WORK HERE
-    if (doorMode == 0){
-      Serial.println("                            DoorMode = 0");
-    }
-    else if (doorMode == 1){
-      // drive_the_motor_to_hold_door();
-      Serial.println("                            DoorMode = 1");
-      esp_timer_start_once(timer0_handle, 1000000);  // 1 seconds
-    }
-    else if (doorMode == 2){
+    if (doorMode == 2){
       Serial.println("                            DoorMode = 2");
-    }
-    else{
-      Serial.println("                            DoorMode = ???????????????");
-      
+      open_door();
     }
     Serial.print("                            Sensor Mode is : ");
     Serial.println(sensorMode);
@@ -249,6 +291,7 @@ void doTaskH(void *parameters) {
 
 
 
+
 //*****************************************************************************
 // Main (runs as its own task with priority 1 on core 1)
 
@@ -260,11 +303,18 @@ void setup() {
   // GPIO PIN
   pinMode(PIR_SENSOR_PIN, INPUT);
   pinMode(LED_PIN, OUTPUT);
-  pinMode(RESET_BUTTON_PIN, INPUT_PULLUP);
   ledcSetup(CHANNEL, 2000, 12);
       // Create the fire alarm timer 
 
   pinMode(BUTTON_PIN, INPUT_PULLUP); 
+  pinMode(DRIVER_DIR, OUTPUT);
+  pinMode(DRIVER_PUL, OUTPUT);
+
+      // relay input
+  pinMode(RELAY_INPUT, OUTPUT);
+  digitalWrite(RELAY_INPUT,LOW);
+  
+
   attachInterrupt(digitalPinToInterrupt(OPEN_DOOR_BUTTON_PIN), openning_door_signal, FALLING);
   // Wait a moment to start (so we don't miss Serial output)
   vTaskDelay(1000 / portTICK_PERIOD_MS);
