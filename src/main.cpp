@@ -26,6 +26,9 @@ TickType_t med_wait = 5000; // Time medium task spends working (ms)
 // 2 Define all function
 void timer0_callback(void* arg);
 void timer1_callback(void* arg);
+void doTaskL(void *parameters);
+void doTaskM(void *parameters);
+void doTaskH(void *parameters);
 void initialize_timer();
 
 // Define the timer handle
@@ -55,7 +58,7 @@ TaskHandle_t reset_button_Handle;
 #define DRIVER_PUL 18
 #define DRIVER_DIR 19
 #define RELAY_INPUT 23
-#define stepsPerRevolution 3430
+int stepsPerRevolution = 3430;
 
 //************************************************************* Globals ****************************************
 static SemaphoreHandle_t lock;
@@ -84,7 +87,7 @@ void open_door(int x){
   if (doorMode == 2 || doorMode ==10) {
     digitalWrite(DRIVER_DIR, LOW);
     // Spin the stepper motor 1 revolution slowly:
-    for (int i = 0; i < x; i++) {
+    for (int i = 1; i < x; i++) {
       // These four lines result in 1 step:
       digitalWrite(RELAY_INPUT,HIGH);
       digitalWrite(DRIVER_PUL, HIGH);
@@ -92,17 +95,18 @@ void open_door(int x){
       digitalWrite(DRIVER_PUL, LOW);
       delayMicroseconds(3000);
       if (digitalRead(PIR_SENSOR_PIN) == HIGH)  {
-        stepAlreadyOpen = stepsPerRevolution - i;
+        stepsPerRevolution = stepsPerRevolution - i;
         break;
       }
     }
     if (digitalRead(PIR_SENSOR_PIN) == HIGH){
-      doorMode = 10;
+      doorMode = 5;
     }
     else {
       doorMode = 3;
+      esp_timer_start_once(timer0_handle, 4000000); // 4 seconds
     }
-    esp_timer_start_once(timer0_handle, 4000000); // 4 seconds
+    
   }
 
   delay(1000);
@@ -122,19 +126,29 @@ void initialize_timer(){
 // Callback function for TIMER0 when Door is in wide open 
 void timer0_callback(void* arg) {
     Serial.println("                                        TIMER0 triggered  4s  ");
-    xSemaphoreTake(lock, portMAX_DELAY);
-    doorMode = 4;
-    xSemaphoreGive(lock);
-    esp_timer_start_once(timer1_handle, 8000000); // 8 seconds
+    // xSemaphoreTake(lock, portMAX_DELAY);
+    if (doorMode == 6){
+      doorMode = 2;
+      
+    }
+    else {
+      digitalWrite(RELAY_INPUT,LOW);
+      doorMode = 4;
+      stepsPerRevolution = 3410;
+      esp_timer_start_once(timer1_handle, 8000000); // 8 seconds
+    }
     
+    // xSemaphoreGive(lock);
+    // digitalWrite(RELAY_INPUT,LOW);
     
 }
 // Callback function for TIMER1 when Door is release (auto closer work now)
 void timer1_callback(void* arg) {
     Serial.println("                                        TIMER1 triggered  8s  MOTOR is turning off ");
-    xSemaphoreTake(lock, portMAX_DELAY);
+    // xSemaphoreTake(lock, portMAX_DELAY);
     doorMode = 0;
-    xSemaphoreGive(lock);
+    digitalWrite(RELAY_INPUT,LOW);
+    // xSemaphoreGive(lock);
 }
 
 //************************************* Tasks ************************************************
@@ -165,16 +179,27 @@ void reset_trigger_task(void *pvParameters)
         
         reset_mode = !reset_mode;
         if(reset_mode){
-          vTaskSuspend(dc_motor_Handle); // Suspend the task
-          // vTaskSuspend(pir_sensor_Handle);
-          doorMode = 0;
-          esp_timer_stop(timer0_handle);
-          esp_timer_stop(timer1_handle);
+        vTaskSuspend(dc_motor_Handle); // Suspend the task
+        // vTaskDelete(dc_motor_Handle);
+        
+        // vTaskSuspend(pir_sensor_Handle);
+        doorMode = 0;
+        digitalWrite(RELAY_INPUT, LOW);
+        esp_timer_stop(timer0_handle);
+        esp_timer_stop(timer1_handle);
           
         }else{
           xTaskResumeFromISR(dc_motor_Handle);   // Resume the task from ISR
+          // xTaskCreatePinnedToCore(doTaskH,
+          //                 "Task H",
+          //                 1024,
+          //                 NULL,
+          //                 3,
+          //                 &dc_motor_Handle,
+          //                 app_cpu);
           // xTaskResumeFromISR(pir_sensor_Handle); // Resume the task from ISR
           doorMode = 0;
+          digitalWrite(RELAY_INPUT,LOW);
         }
 
     } else {
@@ -225,12 +250,18 @@ void doTaskL(void *parameters) {
       sensorMode = 1;
       doorMode = 2;
     }
+    else if (digitalRead(PIR_SENSOR_PIN) == HIGH && doorMode == 5){
+      sensorMode = 1;
+      doorMode = 6;
+      esp_timer_stop(timer0_handle);
+      esp_timer_start_once(timer0_handle, 6000000); // 4 seconds
+    }
     else if (digitalRead(PIR_SENSOR_PIN) == HIGH && doorMode == 3 ){
       // reset timer 1 if sensor is activate when door is on hold
       sensorMode = 1;
       Serial.print("                                          RESET timer 0");
       esp_timer_stop(timer0_handle);
-      esp_timer_start_once(timer0_handle, 8000000); // 1/32 seconds
+      esp_timer_start_once(timer0_handle, 6000000); // 1/32 seconds
     }
     else if (digitalRead(PIR_SENSOR_PIN) == HIGH && doorMode == 4){
       
@@ -256,16 +287,13 @@ void doTaskM(void *parameters) {
 
     xSemaphoreTake(lock, portMAX_DELAY);
 
-    if (doorMode == 2 || doorMode == 3) {
-      digitalWrite(RELAY_INPUT,HIGH);
-    }
-    else if (doorMode == 10  && digitalRead(PIR_SENSOR_PIN) == HIGH){
+    if (doorMode == 2 || doorMode == 3 || doorMode == 6) {
       digitalWrite(RELAY_INPUT,HIGH);
     }
     else{
       digitalWrite(RELAY_INPUT,LOW);
     }
-    
+     
     xSemaphoreGive(lock);
 
     if(sensorMode == 1){
@@ -288,9 +316,6 @@ void doTaskH(void *parameters) {
     if (doorMode == 2){
       Serial.println("                            DoorMode = 2");
       open_door(stepsPerRevolution);
-    }
-    else if (doorMode == 10){
-      open_door(stepAlreadyOpen);
     }
     Serial.print("                            Sensor Mode is : ");
     Serial.println(sensorMode);
