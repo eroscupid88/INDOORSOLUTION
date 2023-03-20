@@ -55,7 +55,7 @@ TaskHandle_t reset_button_Handle;
 #define DRIVER_PUL 18
 #define DRIVER_DIR 19
 #define RELAY_INPUT 23
-#define stepsPerRevolution 3200
+#define stepsPerRevolution 3300
 
 //************************************************************* Globals ****************************************
 static SemaphoreHandle_t lock;
@@ -85,14 +85,21 @@ void open_door(){
     // Spin the stepper motor 1 revolution slowly:
     for (int i = 0; i < stepsPerRevolution; i++) {
       // These four lines result in 1 step:
-      
+      digitalWrite(RELAY_INPUT,HIGH);
       digitalWrite(DRIVER_PUL, HIGH);
-      delayMicroseconds(2500);
+      delayMicroseconds(2400);
       digitalWrite(DRIVER_PUL, LOW);
-      delayMicroseconds(2500);    
+      delayMicroseconds(2400);
+      if (digitalRead(PIR_SENSOR_PIN) == HIGH)  {
+        break;
+      }
     }
-    doorMode = 3;
-    digitalWrite(RELAY_INPUT,LOW);
+    if (digitalRead(PIR_SENSOR_PIN) == HIGH){
+      doorMode = 0;
+    }
+    else {
+      doorMode = 3;
+    }
     esp_timer_start_once(timer0_handle, 4000000); // 4 seconds
   }
 
@@ -245,7 +252,7 @@ void doTaskM(void *parameters) {
     // digitalWrite(RELAY_INPUT,LOW);
     // vTaskDelay(500 / portTICK_PERIOD_MS);
 
-    // xSemaphoreTake(lock, portMAX_DELAY);
+    xSemaphoreTake(lock, portMAX_DELAY);
 
     if (doorMode == 2 || doorMode == 3) {
       digitalWrite(RELAY_INPUT,HIGH);
