@@ -55,11 +55,12 @@ TaskHandle_t reset_button_Handle;
 #define DRIVER_PUL 18
 #define DRIVER_DIR 19
 #define RELAY_INPUT 23
-#define stepsPerRevolution 3300
+#define stepsPerRevolution 3430
 
 //************************************************************* Globals ****************************************
 static SemaphoreHandle_t lock;
 
+int stepAlreadyOpen = 0;
 int sensorMode = 0;
 int doorMode = 0;
 
@@ -79,23 +80,24 @@ void openning_door_signal(){
   }
 }
 
-void open_door(){
-  if (doorMode == 2) {
+void open_door(int x){
+  if (doorMode == 2 || doorMode ==10) {
     digitalWrite(DRIVER_DIR, LOW);
     // Spin the stepper motor 1 revolution slowly:
-    for (int i = 0; i < stepsPerRevolution; i++) {
+    for (int i = 0; i < x; i++) {
       // These four lines result in 1 step:
       digitalWrite(RELAY_INPUT,HIGH);
       digitalWrite(DRIVER_PUL, HIGH);
-      delayMicroseconds(2400);
+      delayMicroseconds(3000);
       digitalWrite(DRIVER_PUL, LOW);
-      delayMicroseconds(2400);
+      delayMicroseconds(3000);
       if (digitalRead(PIR_SENSOR_PIN) == HIGH)  {
+        stepAlreadyOpen = stepsPerRevolution - i;
         break;
       }
     }
     if (digitalRead(PIR_SENSOR_PIN) == HIGH){
-      doorMode = 4;
+      doorMode = 10;
     }
     else {
       doorMode = 3;
@@ -257,7 +259,7 @@ void doTaskM(void *parameters) {
     if (doorMode == 2 || doorMode == 3) {
       digitalWrite(RELAY_INPUT,HIGH);
     }
-    else if (doorMode == 4  && digitalRead(PIR_SENSOR_PIN) == HIGH){
+    else if (doorMode == 10  && digitalRead(PIR_SENSOR_PIN) == HIGH){
       digitalWrite(RELAY_INPUT,HIGH);
     }
     else{
@@ -285,7 +287,10 @@ void doTaskH(void *parameters) {
     // MOTOR DOING SOME WORK HERE
     if (doorMode == 2){
       Serial.println("                            DoorMode = 2");
-      open_door();
+      open_door(stepsPerRevolution);
+    }
+    else if (doorMode == 10){
+      open_door(stepAlreadyOpen);
     }
     Serial.print("                            Sensor Mode is : ");
     Serial.println(sensorMode);
