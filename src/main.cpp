@@ -95,7 +95,7 @@ void open_door(){
       }
     }
     if (digitalRead(PIR_SENSOR_PIN) == HIGH){
-      doorMode = 0;
+      doorMode = 4;
     }
     else {
       doorMode = 3;
@@ -178,7 +178,7 @@ void reset_trigger_task(void *pvParameters)
     } else {
         // A timeout occurred
         if (reset_mode){
-            Serial.println("DISABLE");
+            Serial.println("OPENING");
             // Serial.println(Freq);
         } else {
             // Serial.println(Freq);
@@ -255,6 +255,9 @@ void doTaskM(void *parameters) {
     xSemaphoreTake(lock, portMAX_DELAY);
 
     if (doorMode == 2 || doorMode == 3) {
+      digitalWrite(RELAY_INPUT,HIGH);
+    }
+    else if (doorMode == 4  && digitalRead(PIR_SENSOR_PIN) == HIGH){
       digitalWrite(RELAY_INPUT,HIGH);
     }
     else{
