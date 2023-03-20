@@ -100,7 +100,7 @@ void open_door()
       digitalWrite(DRIVER_PUL, HIGH);
       delayMicroseconds(3000);
       digitalWrite(DRIVER_PUL, LOW);
-      delayMicroseconds(2400);
+      delayMicroseconds(3000);
       if (digitalRead(PIR_SENSOR_PIN) == HIGH)
       {
         break;
