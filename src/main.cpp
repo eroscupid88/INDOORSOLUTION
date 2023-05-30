@@ -104,7 +104,7 @@ void open_door(int x){
     }
     else {
       doorMode = 3;
-      esp_timer_start_once(timer0_handle, 4000000); // 4 seconds
+      esp_timer_start_once(timer0_handle, 8000000); // 4 seconds
     }
     
   }
