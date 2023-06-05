@@ -12,7 +12,7 @@
 #include <ESP32Servo.h>
 
 uint32_t Freq = 0;
-// Use only core 1 for demo purposes
+// Use only core 1 for demo purposes. We can use 2 different core running on different task such as wifi network
 #if CONFIG_FREERTOS_UNICORE
   static const BaseType_t app_cpu = 0;
 #else
@@ -69,6 +69,9 @@ int doorMode = 0;
 
 //******************************************** Help Functions ****************************************
 
+/**
+ *  read_analog function help read digital output of the pin
+*/
 void read_analog(){
   int adcVal = analogRead(PIN_ANALOG_IN); // read adc
   int pwmVal = adcVal;
@@ -83,6 +86,10 @@ void openning_door_signal(){
   }
 }
 
+/**
+ * open door function. running stepper motor. Recalculate the step required to open full door.
+ * if motion sensor is detected change doorMode status to 5
+*/
 void open_door(int x){
   if (doorMode == 2 || doorMode ==10) {
     digitalWrite(DRIVER_DIR, LOW);
@@ -112,6 +119,9 @@ void open_door(int x){
   delay(1000);
 }
 
+/**
+ * Initialize 2 timers
+*/
 void initialize_timer(){
   //     TIMER 0
   esp_timer_create_args_t timer0_args = {.callback = timer0_callback,.name = "timer0"};
@@ -123,7 +133,11 @@ void initialize_timer(){
 }
 
 /************************************TIMERS************************************************************/
-// Callback function for TIMER0 when Door is in wide open 
+// 
+/**
+ * Timer 0 when timer is up: Callback function for TIMER0 when Door is in wide open 
+ * if doorMode status is 6. It will open with recalcuated revolution of the stepper motor
+*/
 void timer0_callback(void* arg) {
     Serial.println("                                        TIMER0 triggered  4s  ");
     // xSemaphoreTake(lock, portMAX_DELAY);
@@ -131,8 +145,8 @@ void timer0_callback(void* arg) {
       doorMode = 2;
       
     }
-    else {
-      digitalWrite(RELAY_INPUT,LOW);
+    else {   
+      digitalWrite(RELAY_INPUT,LOW);  // turn off relay turn off motor
       doorMode = 4;
       stepsPerRevolution = 3410;
       esp_timer_start_once(timer1_handle, 8000000); // 8 seconds
@@ -142,12 +156,14 @@ void timer0_callback(void* arg) {
     // digitalWrite(RELAY_INPUT,LOW);
     
 }
-// Callback function for TIMER1 when Door is release (auto closer work now)
+/**
+ * Timer 1 Callback function for TIMER1 when Door is release (auto closer work now)
+*/
 void timer1_callback(void* arg) {
     Serial.println("                                        TIMER1 triggered  8s  MOTOR is turning off ");
     // xSemaphoreTake(lock, portMAX_DELAY);
     doorMode = 0;
-    digitalWrite(RELAY_INPUT,LOW);
+    digitalWrite(RELAY_INPUT,LOW); // turn off relay turn off motor power
     // xSemaphoreGive(lock);
 }
 
@@ -165,6 +181,9 @@ void resetTimerCallback(TimerHandle_t xTimer)
   xTaskNotifyGive(reset_trigger_Handle);
 }
 
+/**
+ * reset trigger and turn back system into default
+*/
 void reset_trigger_task(void *pvParameters)
 {
   while(1)
@@ -217,6 +236,9 @@ void reset_trigger_task(void *pvParameters)
   }
 }
 
+/**
+ * interruption happen when push button
+*/
 void buttonInterrupt()
 {
   if (digitalRead(BUTTON_PIN) == LOW)
@@ -233,16 +255,25 @@ void buttonInterrupt()
 
 //********************************************************************************************
 
-// Task L (low priority)
+/**
+ * Task L (low priority) level 1: read sensor and door mode status  
+ * details for doorMode:
+ *    doorMode = 0: Door is at close position 
+ *    doorMode = 1: Door is at close position without motion sensor detected
+ *    doorMode = 2: Door is at opening position motor is running
+ *    doorMode = 3: door is at holding position, motoer is running
+ *    doorMode = 4: toDO not yet implement
+ *    doorMode = 5: door detect obstacle while on operation. move to state 6
+ *    doorMode = 6: door will be hold for 6 second until obstacle clear
+ * details for sensorMode:
+ *    sensorMode = 0: not detected
+ *    sensorMode = 1: detected
+*/
 void doTaskL(void *parameters) {
-
   TickType_t timestamp;
-
   // Do forever
   while (1) {
     xSemaphoreTake(lock, portMAX_DELAY);
-    // Serial.print("                                      Task Sensor is on");
-    // do something over here
     if (digitalRead(PIR_SENSOR_PIN) == HIGH && doorMode == 1){
       doorMode = 0;
     }
@@ -254,7 +285,7 @@ void doTaskL(void *parameters) {
       sensorMode = 1;
       doorMode = 6;
       esp_timer_stop(timer0_handle);
-      esp_timer_start_once(timer0_handle, 6000000); // 4 seconds
+      esp_timer_start_once(timer0_handle, 6000000); // 6 seconds
     }
     else if (digitalRead(PIR_SENSOR_PIN) == HIGH && doorMode == 3 ){
       // reset timer 1 if sensor is activate when door is on hold
@@ -264,7 +295,7 @@ void doTaskL(void *parameters) {
       esp_timer_start_once(timer0_handle, 6000000); // 1/32 seconds
     }
     else if (digitalRead(PIR_SENSOR_PIN) == HIGH && doorMode == 4){
-      
+      // toDo
     }
     else {
       sensorMode = 0;
@@ -276,22 +307,22 @@ void doTaskL(void *parameters) {
   }
 }
 
-// Task M (medium priority)
+/**
+ * Task M (medium priority): 
+ * this task just to read sensor by using LED
+ * this task control power of the motor. 
+ * doorMode =2,3,6: power of stepper motor on
+ * else: power off. 
+*/
 void doTaskM(void *parameters) {
   while (1) {
-
-    // digitalWrite(RELAY_INPUT,HIGH);
-    // vTaskDelay(500 / portTICK_PERIOD_MS);
-    // digitalWrite(RELAY_INPUT,LOW);
-    // vTaskDelay(500 / portTICK_PERIOD_MS);
-
     xSemaphoreTake(lock, portMAX_DELAY);
 
     if (doorMode == 2 || doorMode == 3 || doorMode == 6) {
-      digitalWrite(RELAY_INPUT,HIGH);
+      digitalWrite(RELAY_INPUT,HIGH); // stepper motor power is on
     }
     else{
-      digitalWrite(RELAY_INPUT,LOW);
+      digitalWrite(RELAY_INPUT,LOW); // stepper motor power is off
     }
      
     xSemaphoreGive(lock);
